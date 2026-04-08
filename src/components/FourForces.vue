@@ -239,30 +239,27 @@ function updateLabels(THREE) {
 }
 
 // ── Weight components ─────────────────────────────────────────────────────────
-// Shown during a climb: weight decomposes into:
-//   • perp: perpendicular to the airflow (along -liftDir) — what lift must balance
-//   • along: parallel to the airflow (along drag direction) — adds to total drag/resistance
-// Visible only during a positive flight-path angle (climbing) so the along leg is
-// always parallel to — not anti-parallel to — the drag arrow.
+// Weight decomposes into two components relative to the flight path:
+//   • perp:  perpendicular to the airflow (along -liftDir) — what lift must balance
+//   • along: parallel to the airflow — opposes climb or assists descent
 function updateWeightComponents(THREE) {
   if (!weightCompPerp || !aircraftGroup) return
 
-  const fpa    = Math.max(-1, Math.min(1, smoothVsi)) * FPA_SCALE
-  const fpTilt = -smoothVsi * FPA_SCALE           // = -fpa (opposite sign)
+  // fpTilt is unclamped, matching the drag/lift arrow directions in updateArrows exactly.
+  const fpTilt = -smoothVsi * FPA_SCALE
 
   weightCompMat.opacity = 1
 
-  const W   = forces.weight
+  const W = forces.weight
 
-  // Airflow-relative directions (same basis as lift and drag arrows)
-  const liftDir = new THREE.Vector3(0, 1, fpTilt).normalize()   // perpendicular to airflow
+  // liftDir: perpendicular to relative airflow, same as the lift arrow direction.
+  const liftDir = new THREE.Vector3(0, 1, fpTilt).normalize()
 
-  // Draw as a right-angle triangle aligned with the flight path:
-  //   perp leg:  origin → perpEnd  (along -liftDir, what lift must balance)
-  //   along leg: perpEnd → weightTip  (parallel to airflow/drag, adds to resistance — completes the triangle)
-  // The two legs sum exactly to the weight vector (origin → weightTip).
-  // (In a positive-FPA climb, the along leg is naturally parallel to the drag arrow.)
-  const perpEnd   = liftDir.clone().multiplyScalar(-W * Math.cos(fpa))
+  // Exact perpendicular projection of weight onto -liftDir: W / sqrt(1 + fpTilt²).
+  // This guarantees weightTip − perpEnd = W·fpTilt/(1+fpTilt²)·(0,−fpTilt,1),
+  // which is exactly parallel to the flight-path / drag direction.
+  const perpLen = W / Math.sqrt(1 + fpTilt * fpTilt)
+  const perpEnd   = liftDir.clone().multiplyScalar(-perpLen)
   const weightTip = new THREE.Vector3(0, -W, 0)
 
   const setLine = (line, start, end) => {
