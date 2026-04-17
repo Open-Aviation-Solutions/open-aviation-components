@@ -11,7 +11,7 @@
 
     <div class="demo-container">
       <four-forces height="500px" model-path="/aviation-learning-components/aircraft.glb"
-        v_ne="45" v_no="35" v_1="22" cruise-kts="30"></four-forces>
+        v_ne="45" v_no="35" v_1="22" cruise-kts="30" banking></four-forces>
     </div>
 
     <h2>Usage</h2>
@@ -54,6 +54,11 @@
           <td><code>cruise-kts</code></td>
           <td><code>100</code></td>
           <td>Airspeed at nominal cruise (speed=1.0). Calibrates the ASI needle to the aircraft's actual speed range.</td>
+        </tr>
+        <tr>
+          <td><code>banking</code></td>
+          <td>—</td>
+          <td>Boolean. When present, shows a bank angle slider beneath the attitude indicator. Banking tilts the lift vector and displays its vertical and horizontal components.</td>
         </tr>
       </tbody>
     </table>

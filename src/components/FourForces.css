@@ -10,7 +10,7 @@
   height: 100%;
 }
 
-.ff-root canvas:first-child {
+.ff-root > canvas:first-child {
   display: block;
   position: absolute;
   inset: 0;
@@ -50,50 +50,84 @@
   transform: translate(-50%, -50%);
 }
 
-/* Control bar */
-.ff-bar {
+/* Artificial horizon widget — bottom-left */
+.ff-ah-wrap {
   position: absolute;
   bottom: 8px;
   left: 8px;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  z-index: 10;
+}
+
+.ff-att-slider {
+  writing-mode: vertical-lr;
+  width: 20px;
+  height: 120px;
+  accent-color: #475569;
+  cursor: pointer;
+  margin: 0;
+}
+
+.ff-ah-canvas {
+  width: 120px;
+  height: 120px;
+  display: block;
+}
+
+/* Column wrapper for AH canvas + optional bank slider */
+.ff-ah-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Bank angle horizontal slider (shown when 'banking' attribute is set) */
+.ff-bank-slider {
+  width: 120px;
+  accent-color: #475569;
+  cursor: pointer;
+  margin: 0;
+}
+
+/* Throttle (power) vertical slider — bottom-right */
+.ff-throttle-wrap {
+  position: absolute;
+  bottom: 8px;
   right: 8px;
   display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
   z-index: 10;
   background: rgba(10, 15, 30, 0.75);
   border: 1px solid #1e293b;
   border-radius: 6px;
   backdrop-filter: blur(4px);
-}
-
-.ff-cell {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 7px 10px;
+  padding: 6px 8px;
   color: #e2e8f0;
   font-size: 12px;
   font-family: monospace;
-  border-right: 1px solid #1e293b;
 }
 
-.ff-cell:last-child {
-  border-right: none;
-}
-
-.ff-cell input[type="range"] {
-  flex: 1;
+.ff-throttle-slider {
+  writing-mode: vertical-lr;
+  direction: rtl;
+  width: 20px;
+  height: 120px;
   accent-color: #475569;
   cursor: pointer;
+  margin: 0;
 }
 
-.ff-cell-label {
+.ff-throttle-label {
   font-weight: 700;
-  white-space: nowrap;
   color: #94a3b8;
 }
 
-.ff-cell-value {
+.ff-throttle-value {
   font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-  text-align: right;
 }
