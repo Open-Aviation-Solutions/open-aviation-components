@@ -60,7 +60,7 @@ const FLOW_SPEED_SCALE = 3.0   // world-units/s at speed=1 (cruise)
 const FPA_SCALE        = 0.15  // converts smoothVsi to flight-path tilt (shared by particles + drag)
 
 class FourForcesElement extends HTMLElement {
-  static observedAttributes = ['height', 'model-path', 'v_ne', 'v_no', 'v_1', 'cruise-kts', 'banking']
+  static observedAttributes = ['height', 'model-path', 'model-rotation', 'model-offset', 'v_ne', 'v_no', 'v_1', 'cruise-kts', 'banking']
 
   constructor() {
     super()
@@ -78,11 +78,17 @@ class FourForcesElement extends HTMLElement {
     this._loadingEl = loadingEl
     root.appendChild(loadingEl)
 
-    const gaugeEl = document.createElement('canvas')
-    gaugeEl.className = 'ff-gauge'
-    gaugeEl.style.display = 'none'
-    this._gaugeEl = gaugeEl
-    root.appendChild(gaugeEl)
+    const asiEl = document.createElement('canvas')
+    asiEl.className = 'ff-gauge-asi'
+    asiEl.style.display = 'none'
+    this._asiEl = asiEl
+    root.appendChild(asiEl)
+
+    const vsiEl = document.createElement('canvas')
+    vsiEl.className = 'ff-gauge-vsi'
+    vsiEl.style.display = 'none'
+    this._vsiEl = vsiEl
+    root.appendChild(vsiEl)
 
     for (const [name, color] of [
       ['Lift',   '#22c55e'],
@@ -283,7 +289,8 @@ class FourForcesElement extends HTMLElement {
   // ── Loading state ────────────────────────────────────────────────────────────
   _setLoading(val) {
     this._loadingEl.style.display = val ? '' : 'none'
-    this._gaugeEl.style.display   = val ? 'none' : ''
+    this._asiEl.style.display = val ? 'none' : ''
+    this._vsiEl.style.display = val ? 'none' : ''
     for (const name of ['Lift', 'Weight', 'Thrust', 'Drag']) {
       this[`_label${name}`].style.display = val ? 'none' : ''
     }
@@ -510,6 +517,12 @@ class FourForcesElement extends HTMLElement {
       const obj = gltf.scene
       this._aircraftGroup.add(obj)
 
+      const rotAttr = this.getAttribute('model-rotation')
+      if (rotAttr) {
+        const [rx, ry, rz] = rotAttr.split(',').map(s => parseFloat(s) * Math.PI / 180)
+        obj.rotation.set(rx || 0, ry || 0, rz || 0)
+      }
+
       const box = new THREE.Box3().setFromObject(obj)
       const size = new THREE.Vector3(); box.getSize(size)
       const maxDim = Math.max(size.x, size.y, size.z)
@@ -520,6 +533,14 @@ class FourForcesElement extends HTMLElement {
       const scaledSize = new THREE.Vector3(); scaledBox.getSize(scaledSize)
       obj.position.sub(scaledCenter)
       obj.position.z -= 0.2
+
+      const offsetAttr = this.getAttribute('model-offset')
+      if (offsetAttr) {
+        const [ox, oy, oz] = offsetAttr.split(',').map(s => parseFloat(s) || 0)
+        obj.position.x += ox
+        obj.position.y += oy
+        obj.position.z += oz
+      }
       obj.position.y += 0.1
 
       this._orbitControls.target.set(0, 0, 0)
@@ -554,13 +575,15 @@ class FourForcesElement extends HTMLElement {
     const THREE = this._THREE
     this._animFrameId = requestAnimationFrame(this._boundLoop)
 
-    // Set aircraft pitch and bank (composed quaternions: pitch first, then bank about body Z)
+    // Set aircraft pitch and bank. Composition order: bank first (world Z), then pitch
+    // around the aircraft's own banked lateral axis (intrinsic X). qBank * qPitch achieves
+    // this — in body-space terms: bank first, then pitch around the now-rotated X axis.
     if (this._aircraftGroup) {
       const pitchRad = this._attitude * Math.PI / 180
       const bankRad  = this._bankDeg  * Math.PI / 180
       const qPitch = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), -pitchRad)
       const qBank  = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1),  bankRad)
-      this._aircraftGroup.quaternion.copy(qPitch).multiply(qBank)
+      this._aircraftGroup.quaternion.copy(qBank).multiply(qPitch)
     }
 
     this._tick()
@@ -898,16 +921,20 @@ class FourForcesElement extends HTMLElement {
 
   // ── Gauge rendering ───────────────────────────────────────────────────────────
   _drawGauges() {
-    const gc = this._gaugeEl
-    if (!gc) return
-    gc.width  = gc.offsetWidth
-    gc.height = gc.offsetHeight
-    const ctx = gc.getContext('2d')
-    const w = gc.width, h = gc.height
-    const R = Math.min(w * 0.22, h * 0.44, 56)
-    ctx.clearRect(0, 0, w, h)
-    this._drawASI(ctx, R + 24, R + 10, R, this._speed * this._cruiseKts)
-    this._drawVSI(ctx, w - R - 16, R + 10, R, this._smoothVsi)
+    const asiCanvas = this._asiEl, vsiCanvas = this._vsiEl
+    if (!asiCanvas || !vsiCanvas) return
+
+    asiCanvas.width = asiCanvas.offsetWidth; asiCanvas.height = asiCanvas.offsetHeight
+    const asiCtx = asiCanvas.getContext('2d')
+    const asiRadius = Math.min(asiCanvas.width * 0.44, asiCanvas.height * 0.44, 56)
+    asiCtx.clearRect(0, 0, asiCanvas.width, asiCanvas.height)
+    this._drawASI(asiCtx, asiCanvas.width / 2, asiRadius + 10, asiRadius, this._speed * this._cruiseKts)
+
+    vsiCanvas.width = vsiCanvas.offsetWidth; vsiCanvas.height = vsiCanvas.offsetHeight
+    const vsiCtx = vsiCanvas.getContext('2d')
+    const vsiRadius = Math.min(vsiCanvas.width * 0.44, vsiCanvas.height * 0.44, 56)
+    vsiCtx.clearRect(0, 0, vsiCanvas.width, vsiCanvas.height)
+    this._drawVSI(vsiCtx, vsiCanvas.width / 2, vsiRadius + 10, vsiRadius, this._smoothVsi)
 
     const ah = this._ahEl
     if (!ah) return

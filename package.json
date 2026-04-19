@@ -2,6 +2,7 @@
   "name": "aviation-learning-components",
   "version": "0.1.0",
   "description": "Interactive aviation training components",
+  "exports": { ".": "./src/index.js" },
   "license": "MPL-2.0",
   "repository": {
     "type": "git",

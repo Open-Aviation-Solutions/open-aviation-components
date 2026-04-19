@@ -12,6 +12,10 @@ npm run preview   # Preview production build locally
 
 No test or lint commands are configured.
 
+## Code style
+
+Use descriptive variable names — avoid single-letter or two-letter abbreviations for local variables, even in short blocks. For example, prefer `asiCanvas` over `ac` and `vsiRadius` over `vR`.
+
 ## Commit style
 
 Do **not** add `Co-Authored-By` trailers. The developer is solely responsible for authorship of all commits, regardless of tooling used.
@@ -37,7 +41,7 @@ The core component is a self-contained 3D aerodynamic force visualizer implement
 - **Weight component decomposition** — `_updateWeightComponents()` shows weight resolved along and perpendicular to the flight path during climbs/descents
 - **Lift component decomposition** — `_updateLiftComponents()` (shown when `banking` attribute is set) shows lift resolved into vertical and horizontal components in the plane perpendicular to airflow
 - **Particle system** — 120 particles animate an airflow stream
-- **Gauge canvas** — ASI and VSI instruments drawn imperatively onto an overlay `<canvas>`; attitude indicator includes bank rotation
+- **Gauge canvases** — ASI and VSI instruments drawn imperatively onto separate overlay `<canvas>` elements (`.ff-gauge-asi` top-left, `.ff-gauge-vsi` top-right); attitude indicator includes bank rotation
 - **BroadcastChannel** — syncs state across browser tabs
 
 **Attributes:**

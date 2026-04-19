@@ -18,6 +18,7 @@
 
     <div class="demo-container">
       <four-forces height="500px" model-path="/aviation-learning-components/aircraft.glb"
+        model-rotation="0,90,0" model-offset="0,-0.1,0"
         v_ne="45" v_no="35" v_1="22" cruise-kts="30" :banking="banking || undefined"></four-forces>
     </div>
 
