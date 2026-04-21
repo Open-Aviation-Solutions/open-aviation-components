@@ -229,15 +229,19 @@ class FourForcesElement extends HTMLElement {
     // Stable bound reference for requestAnimationFrame
     this._boundLoop = this._loop.bind(this)
 
-    // Make host element focusable so keyboard events target it rather than the page
-    this.tabIndex = 0
-    this.style.outline = 'none'
-    // Clicking anywhere inside (canvas, sliders, etc.) brings focus to the host element
-    this.addEventListener('pointerdown', () => this.focus())
-    this._boundKeyDown = this._handleGlobalKeyDown.bind(this)
+    // Bound handlers — listeners attach in connectedCallback. Per the Custom
+    // Elements spec the constructor must not gain attributes on the host
+    // element, which rules out setting tabIndex/style here (doing so throws
+    // NotSupportedError and leaves the element in a failed state).
+    this._boundKeyDown     = this._handleGlobalKeyDown.bind(this)
+    this._boundPointerDown = () => this.focus()
   }
 
   connectedCallback() {
+    // Make host element focusable so keyboard events target it rather than the page
+    this.tabIndex = 0
+    this.style.outline = 'none'
+    this.addEventListener('pointerdown', this._boundPointerDown)
     this.addEventListener('keydown', this._boundKeyDown)
     this._applyHeight()
     this._startScene()
@@ -255,6 +259,7 @@ class FourForcesElement extends HTMLElement {
 
   disconnectedCallback() {
     this.removeEventListener('keydown', this._boundKeyDown)
+    this.removeEventListener('pointerdown', this._boundPointerDown)
     this._teardown()
     this._intersectionObserver?.disconnect()
     this._intersectionObserver = null
@@ -284,6 +289,7 @@ class FourForcesElement extends HTMLElement {
       case 'ArrowUp':
       case 'ArrowDown': {
         e.preventDefault()
+        e.stopPropagation()
         const step = +this._attitudeSlider.step
         // ArrowUp = nose down (joystick convention, matching original slider handler)
         const delta = e.key === 'ArrowUp' ? -step : +step
@@ -296,6 +302,7 @@ class FourForcesElement extends HTMLElement {
       case 'ArrowRight': {
         if (!this.hasAttribute('banking')) return
         e.preventDefault()
+        e.stopPropagation()
         const step = +this._bankSlider.step
         const delta = e.key === 'ArrowLeft' ? -step : +step
         this._bankDeg = Math.max(-60, Math.min(60, this._bankDeg + delta))
@@ -306,6 +313,7 @@ class FourForcesElement extends HTMLElement {
       case 'PageUp':
       case 'PageDown': {
         e.preventDefault()
+        e.stopPropagation()
         const step = +this._powerSlider.step
         const delta = e.key === 'PageUp' ? +step : -step
         this._power = Math.max(0, Math.min(100, this._power + delta))
