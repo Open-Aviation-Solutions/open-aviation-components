@@ -561,7 +561,7 @@ class FourForcesElement extends HTMLElement {
     dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.7/')
     const gltfLoader = new GLTFLoader()
     gltfLoader.setDRACOLoader(dracoLoader)
-    gltfLoader.load(this.getAttribute('model-path') || '/aircraft.glb', gltf => {
+    gltfLoader.load(this.getAttribute('model-path') || 'https://open-aviation-solutions.github.io/open-aviation-components/aircraft.glb', gltf => {
       const obj = gltf.scene
       this._aircraftGroup.add(obj)
 

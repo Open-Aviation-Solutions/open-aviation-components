@@ -79,7 +79,7 @@ Improvements to the component files must be shared under the same [MPL 2.0](LICE
 
 ## Support
 
-If these components have saved you time, consider [buying me a coffee](https://ko-fi.com) or [sponsoring on GitHub](https://github.com/sponsors/absoludity). ☕
+If these components have saved you time, consider [buying me some tokens](https://ko-fi.com/absoludity) or [sponsoring on GitHub](https://github.com/sponsors/absoludity).
 
 ## License
 
