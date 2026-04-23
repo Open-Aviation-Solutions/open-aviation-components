@@ -10,6 +10,7 @@
       "require": "./dist/lib/open-aviation-components.umd.js"
     }
   },
+  "types": "./dist/lib/index.d.ts",
   "files": [
     "dist/lib",
     "README.md",
@@ -24,13 +25,17 @@
     "dev": "vite",
     "build": "vite build",
     "build:lib": "vite build --config vite.lib.config.js",
+    "typecheck": "tsc --noEmit",
     "preview": "vite preview"
   },
   "peerDependencies": {
-    "three": ">=0.150.0"
+    "three": ">=0.184.0"
   },
   "devDependencies": {
-    "three": "^0.183.2",
-    "vite": "^5.4.0"
+    "@types/three": "^0.184.0",
+    "three": "^0.184.0",
+    "typescript": "^6.0.3",
+    "vite": "^5.4.0",
+    "vite-plugin-dts": "^4.5.4"
   }
 }

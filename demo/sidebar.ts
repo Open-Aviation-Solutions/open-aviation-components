@@ -1,9 +1,15 @@
-const NAV = [
+interface NavEntry {
+  slug: string
+  label: string
+  href: string
+}
+
+const NAV: NavEntry[] = [
   { slug: 'four-forces', label: 'Four Forces', href: '/open-aviation-components/four-forces/' },
 ]
 
-export function renderSidebar(activeSlug) {
-  const container = document.getElementById('sidebar')
+export function renderSidebar(activeSlug: string | null): void {
+  const container = document.getElementById('sidebar')!
   container.innerHTML = `
     <div class="sidebar-header">
       <a href="/open-aviation-components/" class="sidebar-title">Open Aviation<br>Components</a>

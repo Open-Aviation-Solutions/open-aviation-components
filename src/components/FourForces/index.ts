@@ -5,6 +5,8 @@
  */
 
 import styles from './index.css?inline'
+import type * as THREE from 'three'
+import type { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 
 // ── Constructable stylesheet (shared across all instances) ────────────────────
 const sheet = new CSSStyleSheet()
@@ -62,6 +64,79 @@ const FPA_SCALE        = 0.15  // converts smoothVsi to flight-path tilt (shared
 class FourForcesElement extends HTMLElement {
   static observedAttributes = ['height', 'model-path', 'model-rotation', 'model-offset', 'v_ne', 'v_no', 'v_1', 'cruise-kts', 'banking']
 
+  // DOM references
+  private _root!: HTMLDivElement
+  private _loadingEl!: HTMLDivElement
+  private _asiEl!: HTMLCanvasElement
+  private _vsiEl!: HTMLCanvasElement
+  private _labelLift!: HTMLDivElement
+  private _labelWeight!: HTMLDivElement
+  private _labelThrust!: HTMLDivElement
+  private _labelDrag!: HTMLDivElement
+  private _throttleWrapEl!: HTMLDivElement
+  private _powerSlider!: HTMLInputElement
+  private _powerDisplay!: HTMLSpanElement
+  private _ahWrapEl!: HTMLDivElement
+  private _attitudeSlider!: HTMLInputElement
+  private _ahEl!: HTMLCanvasElement
+  private _bankSlider!: HTMLInputElement
+
+  // Controls state
+  private _power!: number
+  private _attitude!: number
+  private _bankDeg!: number
+  private _showBank!: boolean
+
+  // Physics state
+  private _speed!: number
+  private _vsi!: number
+  private _smoothVsi!: number
+  private _forces!: { lift: number; weight: number; thrust: number; drag: number }
+
+  // Three.js handles
+  private _THREE: typeof THREE | null = null
+  private _renderer: THREE.WebGLRenderer | null = null
+  private _camera: THREE.PerspectiveCamera | null = null
+  private _scene: THREE.Scene | null = null
+  private _orbitControls: OrbitControls | null = null
+  private _aircraftGroup: THREE.Group | null = null
+  private _animFrameId: number | null = null
+  private _resizeObserver: ResizeObserver | null = null
+  private _broadcastChannel: BroadcastChannel | null = null
+  private _partPositions: Float32Array | null = null
+  private _partGeo: THREE.BufferGeometry | null = null
+  private _particles: THREE.Points | null = null
+  private _weightCompMat: THREE.LineDashedMaterial | null = null
+  private _weightCompPerp: THREE.Line | null = null
+  private _weightCompAlong: THREE.Line | null = null
+  private _weightCompPerpArrow: THREE.Mesh<THREE.ConeGeometry, THREE.MeshBasicMaterial> | null = null
+  private _weightCompAlongArrow: THREE.Mesh<THREE.ConeGeometry, THREE.MeshBasicMaterial> | null = null
+  private _liftCompMat: THREE.LineDashedMaterial | null = null
+  private _liftCompVert: THREE.Line | null = null
+  private _liftCompHoriz: THREE.Line | null = null
+  private _liftCompVertArrow: THREE.Mesh<THREE.ConeGeometry, THREE.MeshBasicMaterial> | null = null
+  private _liftCompHorizArrow: THREE.Mesh<THREE.ConeGeometry, THREE.MeshBasicMaterial> | null = null
+  private _arrowHelpers: Record<string, THREE.ArrowHelper> = {}
+
+  // Speed limits
+  private _vne: number | null = null
+  private _vno: number | null = null
+  private _vs1: number | null = null
+  private _asiMax: number = ASI_MAX
+  private _cruiseKts: number = CRUISE_KTS
+
+  // Scene/visibility state
+  private _sceneReady: boolean = false
+  private _visible: boolean = true
+
+  // Bound references
+  private _boundLoop!: () => void
+  private _boundKeyDown!: (e: KeyboardEvent) => void
+  private _boundPointerDown!: () => void
+
+  // IntersectionObserver (set in connectedCallback)
+  private _intersectionObserver: IntersectionObserver | null = null
+
   constructor() {
     super()
     const shadow = this.attachShadow({ mode: 'open' })
@@ -90,18 +165,18 @@ class FourForcesElement extends HTMLElement {
     this._vsiEl = vsiEl
     root.appendChild(vsiEl)
 
-    for (const [name, color] of [
-      ['Lift',   '#22c55e'],
-      ['Weight', '#60a5fa'],
-      ['Thrust', '#f97316'],
-      ['Drag',   '#ef4444'],
+    for (const [color, text, key] of [
+      ['#22c55e', 'Lift',   '_labelLift'  ],
+      ['#60a5fa', 'Weight', '_labelWeight'],
+      ['#f97316', 'Thrust', '_labelThrust'],
+      ['#ef4444', 'Drag',   '_labelDrag'  ],
     ]) {
       const label = document.createElement('div')
       label.className = 'ff-label'
       label.style.color = color
       label.style.display = 'none'
-      label.textContent = name
-      this[`_label${name}`] = label
+      label.textContent = text
+      ;(this as unknown as Record<string, HTMLDivElement>)[key] = label
       root.appendChild(label)
     }
 
@@ -165,16 +240,16 @@ class FourForcesElement extends HTMLElement {
 
     // ── Slider event listeners (bound once in constructor) ────────────────────
     this._powerSlider.addEventListener('input', e => {
-      this._power = +e.target.value
+      this._power = +(e.target as HTMLInputElement).value
       this._powerDisplay.textContent = `${this._power}%`
       this._broadcastSlider('power', this._power)
     })
     this._attitudeSlider.addEventListener('input', e => {
-      this._attitude = +e.target.value
+      this._attitude = +(e.target as HTMLInputElement).value
       this._broadcastSlider('attitude', this._attitude)
     })
     this._bankSlider.addEventListener('input', e => {
-      this._bankDeg = +e.target.value
+      this._bankDeg = +(e.target as HTMLInputElement).value
       this._broadcastSlider('bank', this._bankDeg)
     })
 
@@ -265,10 +340,10 @@ class FourForcesElement extends HTMLElement {
     this._intersectionObserver = null
   }
 
-  attributeChangedCallback(name) {
+  attributeChangedCallback(name: string) {
     if (name === 'height') this._applyHeight()
     if (name === 'v_ne' || name === 'v_no' || name === 'v_1') this._parseSpeedAttrs()
-    if (name === 'cruise-kts') { const v = parseFloat(this.getAttribute('cruise-kts')); this._cruiseKts = isNaN(v) ? CRUISE_KTS : v }
+    if (name === 'cruise-kts') { const v = parseFloat(this.getAttribute('cruise-kts') ?? ''); this._cruiseKts = isNaN(v) ? CRUISE_KTS : v }
     if (name === 'banking') {
       this._showBank = this.hasAttribute('banking')
       if (this._bankSlider) this._bankSlider.style.display = this._showBank ? '' : 'none'
@@ -282,7 +357,7 @@ class FourForcesElement extends HTMLElement {
 
   // ── Global keyboard controls ─────────────────────────────────────────────────
   // Fires only when this element (or a child) has focus — see tabIndex + pointerdown in constructor.
-  _handleGlobalKeyDown(e) {
+  _handleGlobalKeyDown(e: KeyboardEvent) {
     // e.preventDefault() on a range-input keydown suppresses the browser's native
     // slider movement, so the input listener won't fire and state is updated once here.
     switch (e.key) {
@@ -294,7 +369,7 @@ class FourForcesElement extends HTMLElement {
         // ArrowUp = nose down (joystick convention, matching original slider handler)
         const delta = e.key === 'ArrowUp' ? -step : +step
         this._attitude = Math.max(-20, Math.min(20, this._attitude + delta))
-        this._attitudeSlider.value = this._attitude
+        this._attitudeSlider.value = String(this._attitude)
         this._broadcastSlider('attitude', this._attitude)
         break
       }
@@ -306,7 +381,7 @@ class FourForcesElement extends HTMLElement {
         const step = +this._bankSlider.step
         const delta = e.key === 'ArrowLeft' ? -step : +step
         this._bankDeg = Math.max(-60, Math.min(60, this._bankDeg + delta))
-        this._bankSlider.value = this._bankDeg
+        this._bankSlider.value = String(this._bankDeg)
         this._broadcastSlider('bank', this._bankDeg)
         break
       }
@@ -317,7 +392,7 @@ class FourForcesElement extends HTMLElement {
         const step = +this._powerSlider.step
         const delta = e.key === 'PageUp' ? +step : -step
         this._power = Math.max(0, Math.min(100, this._power + delta))
-        this._powerSlider.value = this._power
+        this._powerSlider.value = String(this._power)
         this._powerDisplay.textContent = `${this._power}%`
         this._broadcastSlider('power', this._power)
         break
@@ -327,7 +402,7 @@ class FourForcesElement extends HTMLElement {
 
   // ── Speed limits ─────────────────────────────────────────────────────────────
   _parseSpeedAttrs() {
-    const p = attr => { const v = parseFloat(this.getAttribute(attr)); return isNaN(v) ? null : v }
+    const p = (attr: string): number | null => { const v = parseFloat(this.getAttribute(attr) ?? ''); return isNaN(v) ? null : v }
     this._vne  = p('v_ne')
     this._vno  = p('v_no')
     this._vs1  = p('v_1')
@@ -335,19 +410,19 @@ class FourForcesElement extends HTMLElement {
   }
 
   // ── Loading state ────────────────────────────────────────────────────────────
-  _setLoading(val) {
+  _setLoading(val: boolean) {
     this._loadingEl.style.display = val ? '' : 'none'
     this._asiEl.style.display = val ? 'none' : ''
     this._vsiEl.style.display = val ? 'none' : ''
-    for (const name of ['Lift', 'Weight', 'Thrust', 'Drag']) {
-      this[`_label${name}`].style.display = val ? 'none' : ''
+    for (const label of [this._labelLift, this._labelWeight, this._labelThrust, this._labelDrag]) {
+      label.style.display = val ? 'none' : ''
     }
     this._throttleWrapEl.style.display = val ? 'none' : ''
     this._ahWrapEl.style.display       = val ? 'none' : ''
   }
 
   // ── BroadcastChannel helper ──────────────────────────────────────────────────
-  _broadcastSlider(type, value) {
+  _broadcastSlider(type: string, value: number) {
     this._broadcastChannel?.postMessage({ type, value })
   }
 
@@ -424,7 +499,7 @@ class FourForcesElement extends HTMLElement {
         BASE_ARROW * 0.25,
         BASE_ARROW * 0.14
       )
-      this._scene.add(arrow)
+      this._scene!.add(arrow)
       this._arrowHelpers[def.id] = arrow
     })
 
@@ -442,9 +517,9 @@ class FourForcesElement extends HTMLElement {
       const attr = new THREE.BufferAttribute(buf, 3)
       attr.setUsage(THREE.DynamicDrawUsage)
       geo.setAttribute('position', attr)
-      const line = new THREE.Line(geo, this._weightCompMat)
+      const line = new THREE.Line(geo, this._weightCompMat!)
       line.visible = false
-      this._scene.add(line)
+      this._scene!.add(line)
       return line
     }
     this._weightCompPerp  = makeDashLine()
@@ -456,7 +531,7 @@ class FourForcesElement extends HTMLElement {
       const geo  = new THREE.ConeGeometry(COMP_CONE_R, COMP_CONE_H, 10)
       const mesh = new THREE.Mesh(geo, coneMat.clone())
       mesh.visible = false
-      this._scene.add(mesh)
+      this._scene!.add(mesh)
       return mesh
     }
     this._weightCompPerpArrow  = makeCone()
@@ -476,9 +551,9 @@ class FourForcesElement extends HTMLElement {
       const attr = new THREE.BufferAttribute(buf, 3)
       attr.setUsage(THREE.DynamicDrawUsage)
       geo.setAttribute('position', attr)
-      const line = new THREE.Line(geo, this._liftCompMat)
+      const line = new THREE.Line(geo, this._liftCompMat!)
       line.visible = false
-      this._scene.add(line)
+      this._scene!.add(line)
       return line
     }
     this._liftCompVert  = makeLiftLine()
@@ -490,7 +565,7 @@ class FourForcesElement extends HTMLElement {
       const geo  = new THREE.ConeGeometry(COMP_CONE_R, COMP_CONE_H, 10)
       const mesh = new THREE.Mesh(geo, liftConeMat.clone())
       mesh.visible = false
-      this._scene.add(mesh)
+      this._scene!.add(mesh)
       return mesh
     }
     this._liftCompVertArrow  = makeLiftCone()
@@ -525,16 +600,16 @@ class FourForcesElement extends HTMLElement {
       switch (data.type) {
         case 'power':
           this._power = data.value
-          this._powerSlider.value = this._power
+          this._powerSlider.value = String(this._power)
           this._powerDisplay.textContent = `${this._power}%`
           break
         case 'attitude':
           this._attitude = data.value
-          this._attitudeSlider.value = this._attitude
+          this._attitudeSlider.value = String(this._attitude)
           break
         case 'bank':
           this._bankDeg = data.value
-          this._bankSlider.value = this._bankDeg
+          this._bankSlider.value = String(this._bankDeg)
           break
         case 'camera':
           if (!this._camera || !this._orbitControls) break
@@ -547,12 +622,12 @@ class FourForcesElement extends HTMLElement {
       }
     }
 
-    this._orbitControls.addEventListener('change', () => {
+    this._orbitControls!.addEventListener('change', () => {
       if (applyingRemoteCamera) return
       this._broadcastChannel?.postMessage({
         type: 'camera',
-        position: this._camera.position.toArray(),
-        target: this._orbitControls.target.toArray(),
+        position: this._camera!.position.toArray(),
+        target: this._orbitControls!.target.toArray(),
       })
     })
 
@@ -561,9 +636,9 @@ class FourForcesElement extends HTMLElement {
     dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.7/')
     const gltfLoader = new GLTFLoader()
     gltfLoader.setDRACOLoader(dracoLoader)
-    gltfLoader.load(this.getAttribute('model-path') || 'https://open-aviation-solutions.github.io/open-aviation-components/aircraft.glb', gltf => {
+    gltfLoader.load(this.getAttribute('model-path') || 'https://open-aviation-solutions.github.io/open-aviation-components/aircraft.glb', (gltf: { scene: THREE.Group }) => {
       const obj = gltf.scene
-      this._aircraftGroup.add(obj)
+      this._aircraftGroup!.add(obj)
 
       const rotAttr = this.getAttribute('model-rotation')
       if (rotAttr) {
@@ -591,13 +666,13 @@ class FourForcesElement extends HTMLElement {
       }
       obj.position.y += 0.1
 
-      this._orbitControls.target.set(0, 0, 0)
+      this._orbitControls!.target.set(0, 0, 0)
       const camDist = Math.max(scaledSize.x, scaledSize.y, scaledSize.z) * 1.5
-      this._camera.position.set(0, scaledSize.y * 0.3, camDist)
-      this._orbitControls.update()
+      this._camera!.position.set(0, scaledSize.y * 0.3, camDist)
+      this._orbitControls!.update()
 
       this._setLoading(false)
-    }, undefined, err => {
+    }, undefined, (err: unknown) => {
       console.error('[FourForces] failed to load aircraft.glb:', err)
       this._setLoading(false)
     })
@@ -605,9 +680,9 @@ class FourForcesElement extends HTMLElement {
     // Resize observer
     this._resizeObserver = new ResizeObserver(() => {
       const nw = container.clientWidth, nh = container.clientHeight
-      this._renderer.setSize(nw, nh)
-      this._camera.aspect = nw / nh
-      this._camera.updateProjectionMatrix()
+      this._renderer!.setSize(nw, nh)
+      this._camera!.aspect = nw / nh
+      this._camera!.updateProjectionMatrix()
     })
     this._resizeObserver.observe(container)
 
@@ -620,7 +695,7 @@ class FourForcesElement extends HTMLElement {
 
   // ── Render loop ───────────────────────────────────────────────────────────────
   _loop() {
-    const THREE = this._THREE
+    const THREE = this._THREE!
     this._animFrameId = requestAnimationFrame(this._boundLoop)
 
     // Set aircraft pitch and bank. Composition order: bank first (world Z), then pitch
@@ -641,8 +716,8 @@ class FourForcesElement extends HTMLElement {
     this._updateLiftComponents()
     this._updateParticles()
 
-    this._orbitControls.update()
-    this._renderer.render(this._scene, this._camera)
+    this._orbitControls!.update()
+    this._renderer!.render(this._scene!, this._camera!)
     this._drawGauges()
   }
 
@@ -674,7 +749,7 @@ class FourForcesElement extends HTMLElement {
     if (stallFactor < 1.0) {
       const pitchDown = (1.0 - stallFactor) * 15 * DT  // up to 15 °/s at full stall
       this._attitude = Math.max(-20, this._attitude - pitchDown)
-      this._attitudeSlider.value = this._attitude
+      this._attitudeSlider.value = String(this._attitude)
     }
 
     this._forces.lift   = Math.max(0.04, (lift   / WEIGHT) * BASE_ARROW)
@@ -714,7 +789,7 @@ class FourForcesElement extends HTMLElement {
 
   // ── Arrow update ──────────────────────────────────────────────────────────────
   _updateArrows() {
-    const THREE = this._THREE
+    const THREE = this._THREE!
     if (!this._aircraftGroup) return
     const q = this._aircraftGroup.quaternion
 
@@ -729,7 +804,7 @@ class FourForcesElement extends HTMLElement {
       drag:   new THREE.Vector3(0, -this._smoothVsi * FPA_SCALE, -1).normalize(),
     }
 
-    for (const id of ['lift', 'weight', 'thrust', 'drag']) {
+    for (const id of ['lift', 'weight', 'thrust', 'drag'] as const) {
       const arrow = this._arrowHelpers[id]
       if (!arrow) continue
       const len     = this._forces[id]
@@ -742,7 +817,7 @@ class FourForcesElement extends HTMLElement {
 
   // ── Label positioning ─────────────────────────────────────────────────────────
   _updateLabels() {
-    const THREE = this._THREE
+    const THREE = this._THREE!
     if (!this._camera || !this._root || !this._aircraftGroup) return
     const cw = this._root.clientWidth
     const ch = this._root.clientHeight
@@ -762,7 +837,7 @@ class FourForcesElement extends HTMLElement {
       drag:   this._labelDrag,
     }
 
-    for (const id of ['lift', 'weight', 'thrust', 'drag']) {
+    for (const id of ['lift', 'weight', 'thrust', 'drag'] as const) {
       const el = labelRefs[id]
       if (!el) continue
       const labelOffset = (id === 'thrust' || id === 'drag') ? 1.35 : 1.1
@@ -781,13 +856,13 @@ class FourForcesElement extends HTMLElement {
   //   • perp:  perpendicular to the airflow (along -liftDir) — what lift must balance
   //   • along: parallel to the airflow — opposes climb or assists descent
   _updateWeightComponents() {
-    const THREE = this._THREE
+    const THREE = this._THREE!
     if (!this._weightCompPerp || !this._aircraftGroup) return
 
     // fpTilt is unclamped, matching the drag/lift arrow directions in _updateArrows exactly.
     const fpTilt = -this._smoothVsi * FPA_SCALE
 
-    this._weightCompMat.opacity = 1
+    this._weightCompMat!.opacity = 1
 
     const W = this._forces.weight
 
@@ -801,8 +876,8 @@ class FourForcesElement extends HTMLElement {
     const perpEnd   = liftDir.clone().multiplyScalar(-perpLen)
     const weightTip = new THREE.Vector3(0, -W, 0)
 
-    const setLine = (line, start, end) => {
-      const attr = line.geometry.attributes.position
+    const setLine = (line: THREE.Line, start: THREE.Vector3, end: THREE.Vector3) => {
+      const attr = line.geometry.attributes['position'] as THREE.BufferAttribute
       attr.setXYZ(0, start.x, start.y, start.z)
       attr.setXYZ(1, end.x,   end.y,   end.z)
       attr.needsUpdate = true
@@ -812,7 +887,7 @@ class FourForcesElement extends HTMLElement {
 
     const ORIGIN = new THREE.Vector3()
     setLine(this._weightCompPerp,  ORIGIN,  perpEnd)
-    setLine(this._weightCompAlong, perpEnd, weightTip)
+    setLine(this._weightCompAlong!, perpEnd, weightTip)
 
     // Fade cone arrowheads in as the horizontal component grows.
     // Both share the same opacity so they appear/disappear together.
@@ -821,19 +896,19 @@ class FourForcesElement extends HTMLElement {
     const coneOpacity = Math.min(1, alongLen / (CONE_H * 2))
 
     if (coneOpacity < 0.01) {
-      this._weightCompPerpArrow.visible  = false
-      this._weightCompAlongArrow.visible = false
+      this._weightCompPerpArrow!.visible  = false
+      this._weightCompAlongArrow!.visible = false
     } else {
       const Y_AXIS = new THREE.Vector3(0, 1, 0)
-      const placeCone = (cone, start, end) => {
+      const placeCone = (cone: THREE.Mesh<THREE.ConeGeometry, THREE.MeshBasicMaterial>, start: THREE.Vector3, end: THREE.Vector3) => {
         const dir  = end.clone().sub(start).normalize()
         cone.quaternion.setFromUnitVectors(Y_AXIS, dir)
         cone.position.copy(end).addScaledVector(dir, -CONE_H * 0.5)
         cone.material.opacity = coneOpacity
         cone.visible = true
       }
-      placeCone(this._weightCompPerpArrow,  ORIGIN,  perpEnd)
-      placeCone(this._weightCompAlongArrow, perpEnd, weightTip)
+      placeCone(this._weightCompPerpArrow!,  ORIGIN,  perpEnd)
+      placeCone(this._weightCompAlongArrow!, perpEnd, weightTip)
     }
   }
 
@@ -842,15 +917,15 @@ class FourForcesElement extends HTMLElement {
   // The horizontal component provides centripetal force for the turn; the vertical component
   // must support the aircraft's weight, which is why more back-pressure is needed in a turn.
   _updateLiftComponents() {
-    const THREE = this._THREE
+    const THREE = this._THREE!
     if (!this._liftCompVert || !this._aircraftGroup) return
 
     if (!this._showBank) {
-      this._liftCompVert.visible        = false
-      this._liftCompHoriz.visible       = false
-      this._liftCompVertArrow.visible   = false
-      this._liftCompHorizArrow.visible  = false
-      this._liftCompMat.opacity         = 0
+      this._liftCompVert.visible         = false
+      this._liftCompHoriz!.visible       = false
+      this._liftCompVertArrow!.visible   = false
+      this._liftCompHorizArrow!.visible  = false
+      this._liftCompMat!.opacity         = 0
       return
     }
 
@@ -872,18 +947,18 @@ class FourForcesElement extends HTMLElement {
 
     const ORIGIN = new THREE.Vector3()
 
-    this._liftCompMat.opacity = 1
+    this._liftCompMat!.opacity = 1
 
-    const setLine = (line, start, end) => {
-      const attr = line.geometry.attributes.position
+    const setLine = (line: THREE.Line, start: THREE.Vector3, end: THREE.Vector3) => {
+      const attr = line.geometry.attributes['position'] as THREE.BufferAttribute
       attr.setXYZ(0, start.x, start.y, start.z)
       attr.setXYZ(1, end.x,   end.y,   end.z)
       attr.needsUpdate = true
       line.computeLineDistances()
       line.visible = true
     }
-    setLine(this._liftCompVert,  ORIGIN,  vertEnd)
-    setLine(this._liftCompHoriz, vertEnd, horizEnd)
+    setLine(this._liftCompVert,   ORIGIN,  vertEnd)
+    setLine(this._liftCompHoriz!, vertEnd, horizEnd)
 
     // Fade cones in as bank increases from zero (same pattern as weight components)
     const CONE_H = COMP_CONE_H
@@ -891,25 +966,25 @@ class FourForcesElement extends HTMLElement {
     const coneOpacity = Math.min(1, horizLen / (CONE_H * 2))
 
     if (coneOpacity < 0.01) {
-      this._liftCompVertArrow.visible  = false
-      this._liftCompHorizArrow.visible = false
+      this._liftCompVertArrow!.visible  = false
+      this._liftCompHorizArrow!.visible = false
     } else {
       const Y_AXIS = new THREE.Vector3(0, 1, 0)
-      const placeCone = (cone, start, end) => {
+      const placeCone = (cone: THREE.Mesh<THREE.ConeGeometry, THREE.MeshBasicMaterial>, start: THREE.Vector3, end: THREE.Vector3) => {
         const dir = end.clone().sub(start).normalize()
         cone.quaternion.setFromUnitVectors(Y_AXIS, dir)
         cone.position.copy(end).addScaledVector(dir, -CONE_H * 0.5)
         cone.material.opacity = coneOpacity
         cone.visible = true
       }
-      placeCone(this._liftCompVertArrow,  ORIGIN,  vertEnd)
-      placeCone(this._liftCompHorizArrow, vertEnd, horizEnd)
+      placeCone(this._liftCompVertArrow!,  ORIGIN,  vertEnd)
+      placeCone(this._liftCompHorizArrow!, vertEnd, horizEnd)
     }
   }
 
   // ── Particle stream ───────────────────────────────────────────────────────────
   _updateParticles() {
-    const THREE = this._THREE
+    const THREE = this._THREE!
     if (!this._partGeo || !this._aircraftGroup) return
 
     // Relative airflow = opposite to the aircraft's flight path through the air (world space).
@@ -923,7 +998,7 @@ class FourForcesElement extends HTMLElement {
     const flowUp    = new THREE.Vector3(0, 1, 0)
 
     const step = this._speed * FLOW_SPEED_SCALE * DT
-    const pos  = this._partPositions
+    const pos  = this._partPositions!
 
     for (let i = 0; i < N_PART; i++) {
       const ix = i * 3, iy = ix + 1, iz = ix + 2
@@ -973,13 +1048,13 @@ class FourForcesElement extends HTMLElement {
     if (!asiCanvas || !vsiCanvas) return
 
     asiCanvas.width = asiCanvas.offsetWidth; asiCanvas.height = asiCanvas.offsetHeight
-    const asiCtx = asiCanvas.getContext('2d')
+    const asiCtx = asiCanvas.getContext('2d')!
     const asiRadius = Math.min(asiCanvas.width * 0.44, asiCanvas.height * 0.44, 56)
     asiCtx.clearRect(0, 0, asiCanvas.width, asiCanvas.height)
     this._drawASI(asiCtx, asiCanvas.width / 2, asiRadius + 10, asiRadius, this._speed * this._cruiseKts)
 
     vsiCanvas.width = vsiCanvas.offsetWidth; vsiCanvas.height = vsiCanvas.offsetHeight
-    const vsiCtx = vsiCanvas.getContext('2d')
+    const vsiCtx = vsiCanvas.getContext('2d')!
     const vsiRadius = Math.min(vsiCanvas.width * 0.44, vsiCanvas.height * 0.44, 56)
     vsiCtx.clearRect(0, 0, vsiCanvas.width, vsiCanvas.height)
     this._drawVSI(vsiCtx, vsiCanvas.width / 2, vsiRadius + 10, vsiRadius, this._smoothVsi)
@@ -988,12 +1063,12 @@ class FourForcesElement extends HTMLElement {
     if (!ah) return
     ah.width  = ah.offsetWidth
     ah.height = ah.offsetHeight
-    const actx = ah.getContext('2d')
+    const actx = ah.getContext('2d')!
     const AR = Math.min(ah.width, ah.height) * 0.45
     this._drawAH(actx, ah.width / 2, ah.height / 2, AR, this._attitude, this._bankDeg)
   }
 
-  _drawASI(ctx, cx, cy, R, speedKts) {
+  _drawASI(ctx: CanvasRenderingContext2D, cx: number, cy: number, R: number, speedKts: number) {
     const asiMax    = this._asiMax
     const frac      = Math.min(Math.max(speedKts, 0), asiMax) / asiMax
     const needleAng = ASI_START + ASI_SWEEP * frac
@@ -1009,7 +1084,7 @@ class FourForcesElement extends HTMLElement {
     ctx.beginPath(); ctx.arc(cx, cy, trackR, ASI_START, endAng); ctx.stroke()
 
     if (this._vne) {
-      const angOf = kts => ASI_START + ASI_SWEEP * (kts / asiMax)
+      const angOf = (kts: number) => ASI_START + ASI_SWEEP * (kts / asiMax)
 
       // Green arc: VS1 → VNO
       if (this._vs1 != null && this._vno != null) {
@@ -1065,7 +1140,7 @@ class FourForcesElement extends HTMLElement {
     ctx.restore()
   }
 
-  _drawVSI(ctx, cx, cy, R, vsiVal) {
+  _drawVSI(ctx: CanvasRenderingContext2D, cx: number, cy: number, R: number, vsiVal: number) {
     // 0 = needle at 12 o'clock; positive = clockwise = climb; negative = anti-CW = descent
     const clamped   = Math.max(-VSI_MAX, Math.min(VSI_MAX, vsiVal))
     const needleAng = VSI_CENTER + (clamped / VSI_MAX) * VSI_HSWEEP
@@ -1125,7 +1200,7 @@ class FourForcesElement extends HTMLElement {
     ctx.restore()
   }
 
-  _drawAH(ctx, cx, cy, R, pitchDeg, bankDeg = 0) {
+  _drawAH(ctx: CanvasRenderingContext2D, cx: number, cy: number, R: number, pitchDeg: number, bankDeg = 0) {
     const pxPerDeg = R * 0.04          // 20° of pitch → 80% of radius displacement
     const horizY   = cy + pitchDeg * pxPerDeg  // nose up → horizon drops
 

@@ -29,7 +29,7 @@ npm install three
 Import the package once (anywhere in your app's entry point) to register the custom elements, then use them as HTML tags:
 
 ```js
-import 'open-aviation-components'
+import '@open-aviation-solutions/components'
 ```
 
 ```html
@@ -49,27 +49,6 @@ You will need to serve the `aircraft.glb` file as a static asset. A copy is incl
 | `v_1` | — | Stall speed clean (kts). Bottom of green arc. |
 | `cruise-kts` | `100` | Airspeed at nominal cruise (speed=1.0). Calibrates the ASI needle. |
 | `banking` | — | Boolean. When present, shows a bank angle slider and lift-component decomposition. |
-
-### Using in a Slidev project
-
-The component imports `useSlideContext` from `@slidev/client` to skip rendering in overview/preview modes. This works automatically in a Slidev project.
-
-When using the component outside of Slidev, add an alias in your `vite.config.js` to stub the import:
-
-```js
-// vite.config.js
-import { fileURLToPath, URL } from 'node:url'
-
-export default {
-  resolve: {
-    alias: {
-      '@slidev/client': fileURLToPath(
-        new URL('./node_modules/open-aviation-components/src/slidev-stub.js', import.meta.url)
-      ),
-    },
-  },
-}
-```
 
 ---
 
