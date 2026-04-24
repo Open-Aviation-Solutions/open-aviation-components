@@ -1,6 +1,6 @@
 import '../demo/shared.css'
 import { renderSidebar } from '../demo/sidebar'
-import '../src/components/FourForces'
+import '../../src/components/FourForces'
 
 renderSidebar('four-forces')
 

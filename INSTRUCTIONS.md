@@ -28,7 +28,7 @@ This is a **web component library** for interactive aviation training visualizat
 
 **Library entry:** `src/index.js` registers `FourForces` — the only component so far.
 
-**Demo app** is a plain multi-page HTML site. The landing page at the project root (`index.html`) links to each component demo, which lives in its own top-level directory (e.g. `four-forces/index.html` + `four-forces/main.js`). Shared infrastructure — `demo/shared.css`, `demo/sidebar.js` (single source of truth for nav entries), and `demo/landing.js` — lives under `demo/`. Each component demo's `main.js` imports `shared.css`, calls `renderSidebar(<slug>)`, and wires up any per-page controls. Adding a new component means adding a top-level directory with `index.html` + `main.js`, declaring it as a Vite input in `vite.config.js`, and appending an entry to the `NAV` array in `demo/sidebar.js`. The demo is not part of the library distribution.
+**Website** (demo + landing page) lives entirely under `website/`. The landing page is `website/index.html`. Each component demo lives in its own subdirectory (e.g. `website/four-forces/index.html` + `website/four-forces/main.ts`). Shared infrastructure — `website/demo/shared.css`, `website/demo/sidebar.ts` (single source of truth for nav entries), and `website/demo/landing.ts` — lives under `website/demo/`. Static assets served from `website/public/`. Each component demo's `main.ts` imports `shared.css`, calls `renderSidebar(<slug>)`, and wires up any per-page controls. Adding a new component means adding a `website/<slug>/` directory with `index.html` + `main.ts`, declaring it as a Vite input in `vite.config.js`, and appending an entry to the `NAV` array in `website/demo/sidebar.ts`. The website is not part of the library distribution.
 
 Component-specific instructions live alongside each component's source (e.g. `src/components/FourForces/INSTRUCTIONS.md`).
 
@@ -36,8 +36,8 @@ Component-specific instructions live alongside each component's source (e.g. `sr
 
 - **Component source directory:** `src/components/<ComponentName>/` — PascalCase matching the class name (e.g. `FourForces/`)
 - **Component CSS:** `src/components/<ComponentName>/index.css` — always `index.css`, not a named file
-- **Demo directory:** kebab-case at the project root, matching the HTML element tag (e.g. `four-forces/`)
-- **Nav slug** in `demo/sidebar.js`: kebab-case matching the demo directory name (e.g. `'four-forces'`)
+- **Demo directory:** `website/<slug>/` — kebab-case matching the HTML element tag (e.g. `website/four-forces/`)
+- **Nav slug** in `website/demo/sidebar.ts`: kebab-case matching the demo directory name (e.g. `'four-forces'`)
 - **HTML custom element tag:** kebab-case per the HTML spec (e.g. `<four-forces>`)
 
 ### Deployment

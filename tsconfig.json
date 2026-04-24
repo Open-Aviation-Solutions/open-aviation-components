@@ -9,5 +9,5 @@
     "declarationDir": "dist/lib",
     "noEmit": true
   },
-  "include": ["src/**/*.ts", "demo/**/*.ts", "four-forces/**/*.ts"]
+  "include": ["src/**/*.ts", "website/**/*.ts"]
 }
