@@ -6,8 +6,9 @@ export default defineConfig({
   build: {
     rollupOptions: {
       input: {
-        index: resolve(__dirname, 'index.html'),
-        fourForces: resolve(__dirname, 'four-forces/index.html'),
+        index:            resolve(__dirname, 'index.html'),
+        fourForces:       resolve(__dirname, 'four-forces/index.html'),
+        climbPerformance: resolve(__dirname, 'climb-performance/index.html'),
       },
     },
   },

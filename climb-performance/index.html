@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ClimbPerformance — Open Aviation Components</title>
+    <style>
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+      body { font-family: system-ui, sans-serif; background: #0f172a; color: #e2e8f0; height: 100vh; }
+    </style>
+  </head>
+  <body>
+    <div class="layout">
+      <nav class="sidebar" id="sidebar"></nav>
+      <main class="content">
+        <div class="page">
+          <h1>ClimbPerformance</h1>
+          <p class="description">
+            Side-by-side interactive charts showing <strong>Thrust vs Airspeed</strong> and
+            <strong>Power vs Airspeed</strong> for a propeller aircraft. The green-shaded region
+            in each chart is the excess available over required — this excess is what enables
+            climbing. Drag the cursor across both charts to explore how excess thrust (which
+            drives climb <em>angle</em>, Vx) and excess power (which drives climb <em>rate</em>,
+            Vy) vary with airspeed.
+          </p>
+
+          <div class="demo-container">
+            <climb-performance height="540px" vs="45" cruise-kts="145"></climb-performance>
+          </div>
+
+          <h2>Usage</h2>
+          <pre class="code"><code>import 'open-aviation-components'
+
+&lt;climb-performance height="400px"&gt;&lt;/climb-performance&gt;</code></pre>
+
+          <h2>Attributes</h2>
+          <table>
+            <thead>
+              <tr><th>Attribute</th><th>Default</th><th>Description</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>height</code></td>
+                <td><code>400px</code></td>
+                <td>CSS height of the component.</td>
+              </tr>
+              <tr>
+                <td><code>vs</code></td>
+                <td>—</td>
+                <td>
+                  Stall speed in kts. When set alongside <code>cruise-kts</code>, the x-axis
+                  tick labels are shown in kts rather than normalised values.
+                </td>
+              </tr>
+              <tr>
+                <td><code>cruise-kts</code></td>
+                <td>—</td>
+                <td>
+                  Speed corresponding to the right edge of the chart (Vmax = 1.5 × Vmd in the
+                  model). Used together with <code>vs</code> to calibrate the kts axis labels.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+
+          <h2>Interaction</h2>
+          <ul>
+            <li>Click and drag anywhere on either chart to move the cursor.</li>
+            <li>
+              The cursor snaps to VS, Vx, Vy, and Vmd when nearby — use this to compare the
+              excess thrust and excess power at each key speed.
+            </li>
+            <li>Click the component then use <kbd>←</kbd> / <kbd>→</kbd> arrow keys to step the cursor.</li>
+          </ul>
+
+          <h2>Key speeds</h2>
+          <table>
+            <thead>
+              <tr><th>Speed</th><th>Color</th><th>Definition</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><strong>Vx</strong></td><td style="color:#38bdf8">sky blue</td><td>Best angle of climb — maximum excess thrust (TA − TR)</td></tr>
+              <tr><td><strong>Vy</strong></td><td style="color:#a78bfa">purple</td><td>Best rate of climb — maximum excess power (PA − PR)</td></tr>
+              <tr><td><strong>Vmd</strong></td><td style="color:#64748b">slate</td><td>Minimum drag speed — minimum of the required curves; best glide</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </main>
+    </div>
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>

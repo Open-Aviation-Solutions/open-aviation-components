@@ -1,6 +1,6 @@
 {
   "name": "@open-aviation-solutions/components",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Interactive aviation training components",
   "main": "./dist/lib/open-aviation-components.umd.js",
   "module": "./dist/lib/open-aviation-components.es.js",
