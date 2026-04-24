@@ -3,3 +3,4 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 export { FourForcesElement } from './components/FourForces'
+export { ClimbPerformanceElement } from './components/ClimbPerformance'
