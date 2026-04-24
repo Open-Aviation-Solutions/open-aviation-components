@@ -19,7 +19,7 @@
   "license": "MPL-2.0",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/open-aviation-solutions/open-aviation-components.git"
+    "url": "git+https://github.com/Open-Aviation-Solutions/open-aviation-components.git"
   },
   "scripts": {
     "dev": "vite",
