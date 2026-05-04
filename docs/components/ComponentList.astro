@@ -11,5 +11,8 @@ const entries = (await getCollection('docs'))
   <section>
     <h2><a href={`${base}/${entry.id}/`}>{entry.data.title}</a></h2>
     {entry.data.description && <p>{entry.data.description}</p>}
+    <a href={`${base}/${entry.id}/`}>
+      <img src={`${base}/screenshots/${entry.id}.png`} alt={entry.data.title} />
+    </a>
   </section>
 ))}
