@@ -100,18 +100,18 @@ const EXCESS_H   = 48   // excess strip height in CSS px
 const STRIP_SKIP = STRIP_GAP + EXCESS_H  // how far down x-axis labels are shifted
 
 // ── Colors ────────────────────────────────────────────────────────────────────
-const BG          = '#0f172a'
+const BG          = '#f8fafc'
 const AXIS_CLR    = '#475569'
-const GRID_CLR    = '#1e293b'
-const CLR_AVAIL   = '#f97316'
-const CLR_REQ     = '#ef4444'
-const CLR_EXCESS  = 'rgba(34,197,94,0.20)'
-const CLR_DEFICIT = 'rgba(239,68,68,0.11)'
-const CLR_CURSOR  = '#f1f5f9'
-const CLR_VX      = '#38bdf8'
-const CLR_VY      = '#a78bfa'
+const GRID_CLR    = '#e2e8f0'
+const CLR_AVAIL   = '#ea580c'
+const CLR_REQ     = '#dc2626'
+const CLR_EXCESS  = 'rgba(22,163,74,0.20)'
+const CLR_DEFICIT = 'rgba(220,38,38,0.12)'
+const CLR_CURSOR  = '#1e293b'
+const CLR_VX      = '#0284c7'
+const CLR_VY      = '#7c3aed'
 const CLR_VMD     = '#64748b'
-const CLR_STRIP   = 'rgba(34,197,94,0.85)'  // excess curve line on the strip
+const CLR_STRIP   = 'rgba(22,163,74,0.85)'  // excess curve line on the strip
 
 const SNAP_V      = [VS_NORM, VX_NORM, VY_NORM, 1.0, VMAX_NORM]
 const SNAP_THRESH = 0.025
@@ -370,7 +370,7 @@ export class ClimbPerformanceElement extends HTMLElement {
     ctx.beginPath(); ctx.moveTo(area.x, area.y + area.h); ctx.lineTo(area.x + area.w, area.y + area.h); ctx.stroke()
     ctx.beginPath(); ctx.moveTo(area.x, area.y); ctx.lineTo(area.x, area.y + area.h); ctx.stroke()
 
-    ctx.fillStyle = '#94a3b8'; ctx.font = '14px system-ui,sans-serif'
+    ctx.fillStyle = '#475569'; ctx.font = '14px system-ui,sans-serif'
     ctx.textAlign = 'right'; ctx.textBaseline = 'middle'
     for (let yv = 0; yv <= yMax + 0.01; yv += yStep) {
       const py = this._valToY(yv, area, yMax)
@@ -380,7 +380,7 @@ export class ClimbPerformanceElement extends HTMLElement {
 
     ctx.save()
     ctx.translate(area.x - 46, area.y + area.h / 2); ctx.rotate(-Math.PI / 2)
-    ctx.fillStyle = '#64748b'; ctx.font = '13px system-ui,sans-serif'
+    ctx.fillStyle = '#475569'; ctx.font = '13px system-ui,sans-serif'
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
     ctx.fillText(isThrust ? 'Thrust (norm.)' : 'Power (norm.)', 0, 0)
     ctx.restore()
@@ -413,7 +413,7 @@ export class ClimbPerformanceElement extends HTMLElement {
     ctx.textAlign = 'center'; ctx.textBaseline = 'top'
     ctx.fillText('Airspeed →', area.x + area.w / 2, labelBaseY + 44)
 
-    ctx.fillStyle = '#94a3b8'; ctx.font = '700 16px system-ui,sans-serif'
+    ctx.fillStyle = '#1e293b'; ctx.font = '700 16px system-ui,sans-serif'
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
     ctx.fillText(title, area.x + area.w / 2, area.y - MT / 2)
 
