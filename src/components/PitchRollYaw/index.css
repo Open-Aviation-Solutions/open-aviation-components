@@ -1,0 +1,165 @@
+/*
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
+ */
+
+:host {
+  display: block;
+}
+
+.pry-root {
+  position: relative;
+  overflow: hidden;
+  border-radius: 8px;
+  background: white;
+  height: 100%;
+}
+
+.pry-root > canvas:first-child {
+  display: block;
+  position: absolute;
+  inset: 0;
+}
+
+.pry-loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #94a3b8;
+  font-size: 14px;
+  z-index: 10;
+}
+
+.pry-waggle-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 10;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgba(10, 15, 30, 0.75);
+  border: 1px solid #334155;
+  color: #94a3b8;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color 0.15s, color 0.15s;
+  backdrop-filter: blur(4px);
+}
+
+.pry-waggle-btn:hover:not(:disabled) {
+  border-color: #94a3b8;
+  color: #e2e8f0;
+}
+
+.pry-waggle-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.pry-bar {
+  position: absolute;
+  bottom: 8px;
+  left: 8px;
+  right: 8px;
+  display: flex;
+  z-index: 10;
+  background: rgba(10, 15, 30, 0.75);
+  border: 1px solid #1e293b;
+  border-radius: 6px;
+  backdrop-filter: blur(4px);
+}
+
+.pry-cell {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 10px;
+  color: #e2e8f0;
+  font-size: 11px;
+  transition: color 0.15s, background 0.15s;
+  border-right: 1px solid #1e293b;
+  cursor: default;
+}
+
+.pry-cell:last-child {
+  border-right: none;
+}
+
+.pry-cell.active {
+  color: var(--ax-color, #fbbf24);
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.pry-cell-header {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+}
+
+.pry-label {
+  font-weight: 700;
+  font-size: 12px;
+  font-family: monospace;
+}
+
+.pry-axis-name {
+  flex: 1;
+  font-size: 11px;
+  font-weight: 600;
+  text-align: center;
+  color: var(--ax-color, #475569);
+  visibility: hidden;
+  font-family: monospace;
+}
+
+.pry-cell.active .pry-axis-name {
+  visibility: visible;
+}
+
+.pry-angle {
+  font-variant-numeric: tabular-nums;
+  font-size: 10px;
+  font-family: monospace;
+  opacity: 0.75;
+  transition: opacity 0.15s;
+}
+
+.pry-cell.active .pry-angle {
+  opacity: 1;
+  font-weight: 600;
+}
+
+.pry-reset {
+  background: none;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  font-size: 11px;
+  padding: 0;
+  line-height: 1;
+  transition: color 0.15s;
+}
+
+.pry-reset:hover {
+  color: #e2e8f0;
+}
+
+.pry-cell input[type="range"] {
+  width: 100%;
+  accent-color: #475569;
+  height: 3px;
+  cursor: pointer;
+}
+
+.pry-cell.active input[type="range"] {
+  accent-color: var(--ax-color, #fbbf24);
+}

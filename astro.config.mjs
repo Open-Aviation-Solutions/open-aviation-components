@@ -27,6 +27,7 @@ export default defineConfig({
             { label: 'Climb Performance',    slug: 'climb-performance' },
             { label: 'Flight Path Overview', slug: 'flight-path-overview' },
             { label: 'Four Forces',          slug: 'four-forces' },
+            { label: 'Pitch Roll Yaw',       slug: 'pitch-roll-yaw' },
           ],
         },
       ],

@@ -1,6 +1,6 @@
 # Auto-generate index page from frontmatter descriptions
 
-**Status:** draft
+**Status:** done
 
 ## Problem
 

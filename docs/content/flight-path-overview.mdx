@@ -39,6 +39,7 @@ The departure runway sits on the left, arrival on the right, with a dashed fligh
 | `topics` | property | Array of `{ label, time?, color?, labelColor? }`. `topics[0]` is the departure label; the rest are waypoints. Each `time` is the duration in minutes of the segment *after* that topic. Use `\n` in `label` for line breaks. Must be set as a DOM property — complex values cannot be passed as attributes |
 | `plane-position` | attribute | Integer position of the plane: `0` = departure runway, `1..N` = at waypoint *i*, `N+1` = arrival runway. Animates between positions with a 600 ms cubic ease-out |
 | `arrival-label` | attribute | Label shown under the right runway. Defaults to `ARRIVAL` |
+| `controls` | boolean attribute | When present, renders a two-button control panel at the top-right corner: **Start flight** (gear-up lever icon) calls `setEstimatedTimes()` once and disables itself; re-enables if the timer is reset. **Direct-To** (D→ icon) advances `plane-position` by one, records the actual waypoint time, then disables itself for the lifetime of the element instance |
 
 ## Installation
 

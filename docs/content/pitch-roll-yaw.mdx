@@ -1,0 +1,43 @@
+---
+title: Pitch Roll Yaw
+description: An interactive 3D aircraft viewer with pitch, roll, and yaw sliders for exploring the three axes of flight and rotational terminology.
+---
+
+import PitchRollYaw from '../components/PitchRollYaw.astro'
+import ComponentDescription from '../components/ComponentDescription.astro'
+
+<ComponentDescription />
+
+Three sliders rotate a 3D aircraft model about the lateral (pitch), longitudinal (roll), and normal (yaw) axes. Rotations compose body-frame — yawing then pitching applies pitch about the aircraft's own lateral axis. Hover a slider cell to highlight its axis line in the scene. The **?** button triggers a waggle animation on a random axis for the student to identify. Supports cross-tab synchronization via BroadcastChannel for presenter/slide pairing.
+
+<PitchRollYaw />
+
+<small>Aircraft: <a href="https://sketchfab.com/3d-models/bristol-f2b-first-world-war-airplane-1df44f8ecf0b4b3888e07f841c1197ce" target="_blank" rel="noopener">Bristol F.2B (First World War)</a> — public domain, Canadian Ingenium museum</small>
+
+## Usage
+
+```html
+<script type="module">
+  import 'https://unpkg.com/@open-aviation-solutions/components/dist/lib/define.es.js';
+</script>
+
+<pitch-roll-yaw height="420px" model-path="/path/to/aircraft.glb"></pitch-roll-yaw>
+```
+
+## Attributes
+
+| Attribute | Default | Description |
+|-----------|---------|-------------|
+| `height` | `420px` | CSS height of the component |
+| `model-path` | (GitHub Pages hosted glb) | URL to the GLTF/GLB aircraft model file |
+| `model-rotation` | `0,0,0` | `x,y,z` rotation in degrees applied at load |
+| `model-offset` | `0,0,0` | `x,y,z` translation applied after auto-centring |
+| `range` | `45` | Symmetric slider range in degrees (sliders go −N to +N) |
+
+## Dependencies
+
+Requires `three` (≥ 0.184) as a peer dependency:
+
+```bash
+npm install three @open-aviation-solutions/components
+```

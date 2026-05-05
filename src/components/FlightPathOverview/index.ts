@@ -16,6 +16,7 @@ import {
   getFlightArrivalLabel,
   getPlaneImage,
   setPlaneImage,
+  setEstimatedTimes,
   setWaypointActual,
   setArrivalActual,
   setVariance,
@@ -50,6 +51,9 @@ const PALETTE: Array<{ fill: string; labelColor: string }> = [
 
 // plane.svg is bundled as a data URL — keeps the library self-contained.
 const DEFAULT_PLANE_DATA_URL = 'data:image/svg+xml;utf8,' + encodeURIComponent(planeSvgRaw)
+
+const GEAR_UP_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="9" y1="17" x2="14" y2="5.5"/><circle cx="14" cy="4" r="2.5"/><line x1="5" y1="17" x2="15" y2="17"/></svg>`
+const DIRECT_TO_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4 H7.5 C11.5,4 13,7 13,10 C13,13 11.5,16 7.5,16 H3 Z"/><line x1="14" y1="10" x2="19" y2="10"/><polyline points="16.5,7.5 19,10 16.5,12.5"/></svg>`
 
 interface Waypoint {
   x: number
@@ -168,7 +172,7 @@ function setAttrs(element: SVGElement, attrs: Record<string, string | number>): 
 }
 
 class FlightPathOverviewElement extends HTMLElement {
-  static observedAttributes = ['plane-position', 'arrival-label', 'plane-image']
+  static observedAttributes = ['plane-position', 'arrival-label', 'plane-image', 'controls']
 
   private _topics: Topic[] | null = null
   private _planePosition = 0
@@ -179,6 +183,11 @@ class FlightPathOverviewElement extends HTMLElement {
   private _animAngle = 0
   private _rafId: number | null = null
   private _unsubscribe: (() => void) | null = null
+
+  private _directToUsed = false
+  private _controlsEl: HTMLDivElement | null = null
+  private _startBtn: HTMLButtonElement | null = null
+  private _directToBtn: HTMLButtonElement | null = null
 
   private _svg!: SVGSVGElement
   private _gWaypoints!: SVGGElement
@@ -387,6 +396,7 @@ class FlightPathOverviewElement extends HTMLElement {
     this._unsubscribe = subscribe(() => this._renderTransform())
 
     this._renderStructural()
+    if (this.hasAttribute('controls')) this._ensureControls()
     const initial = getTargetForPosition(this._resolvedWaypoints, this._planePosition)
     this._animX = initial.x
     this._animY = initial.y
@@ -416,6 +426,13 @@ class FlightPathOverviewElement extends HTMLElement {
       }
     } else if (name === 'plane-image') {
       setPlaneImage(value)
+    } else if (name === 'controls') {
+      if (value !== null) {
+        if (this.isConnected) this._ensureControls()
+        if (this._controlsEl) this._controlsEl.style.display = ''
+      } else {
+        if (this._controlsEl) this._controlsEl.style.display = 'none'
+      }
     }
   }
 
@@ -487,6 +504,57 @@ class FlightPathOverviewElement extends HTMLElement {
       }
     }
     this._rafId = requestAnimationFrame(tick)
+  }
+
+  private _ensureControls(): void {
+    if (this._controlsEl) return
+
+    const panel = document.createElement('div')
+    panel.className = 'controls'
+
+    const startBtn = document.createElement('button')
+    startBtn.className = 'ctrl-btn'
+    startBtn.title = 'Start flight'
+    startBtn.innerHTML = GEAR_UP_ICON + '<span class="ctrl-label">Start</span>'
+    startBtn.addEventListener('click', () => this._handleStartFlight())
+    panel.appendChild(startBtn)
+    this._startBtn = startBtn
+
+    const directToBtn = document.createElement('button')
+    directToBtn.className = 'ctrl-btn'
+    directToBtn.title = 'Direct to next waypoint'
+    directToBtn.innerHTML = DIRECT_TO_ICON + '<span class="ctrl-label">Next</span>'
+    directToBtn.addEventListener('click', () => this._handleDirectTo())
+    panel.appendChild(directToBtn)
+    this._directToBtn = directToBtn
+
+    this._controlsEl = panel
+    this.shadowRoot!.appendChild(panel)
+    this._updateControls()
+  }
+
+  private _updateControls(): void {
+    if (!this._startBtn || !this._directToBtn) return
+    this._startBtn.disabled = getDepartureTime() !== null
+    const arrivalSlot = this._resolvedTopics ? this._resolvedTopics.length : 0
+    this._directToBtn.disabled = this._directToUsed || this._planePosition >= arrivalSlot
+  }
+
+  private _handleStartFlight(): void {
+    setEstimatedTimes()
+  }
+
+  private _handleDirectTo(): void {
+    const newPos = this._planePosition + 1
+    const waypointCount = this._resolvedWaypoints.length
+    if (newPos > waypointCount) {
+      setArrivalActual(Date.now())
+    } else {
+      setWaypointActual(newPos - 1, Date.now())
+    }
+    this.setAttribute('plane-position', String(newPos))
+    this._directToUsed = true
+    this._updateControls()
   }
 
   private _renderStructural(): void {
@@ -605,6 +673,7 @@ class FlightPathOverviewElement extends HTMLElement {
   }
 
   private _renderTransform(): void {
+    this._updateControls()
     this._gPlane.setAttribute(
       'transform',
       `translate(${this._animX}, ${this._animY}) rotate(${this._animAngle})`,

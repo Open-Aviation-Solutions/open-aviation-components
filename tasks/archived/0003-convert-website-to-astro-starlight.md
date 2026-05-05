@@ -1,6 +1,6 @@
 # Convert website to Astro with Starlight
 
-**Status:** draft
+**Status:** done
 
 ## Problem
 
