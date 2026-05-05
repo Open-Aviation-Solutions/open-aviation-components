@@ -1,6 +1,6 @@
 # 0006 — `pitch-roll-yaw` component (Piper viewer)
 
-**Status:** proposed
+**Status:** done
 
 ## Goal
 

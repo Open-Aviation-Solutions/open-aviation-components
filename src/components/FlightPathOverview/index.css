@@ -1,5 +1,6 @@
 :host {
   display: block;
+  position: relative;
 }
 
 svg {
@@ -17,3 +18,49 @@ svg {
 .footer      { font: 700 13px ui-sans-serif, system-ui, sans-serif; fill: #475569; }
 .wp-time     { font: 600 10px ui-sans-serif, system-ui, sans-serif; fill: #0369a1; }
 .timing-label{ font: 700 10px ui-sans-serif, system-ui, sans-serif; fill: #64748b; }
+
+.controls {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ctrl-btn {
+  padding: 6px 8px 5px;
+  border-radius: 6px;
+  border: 1.5px solid rgba(148, 163, 184, 0.7);
+  background: rgba(255, 255, 255, 0.9);
+  color: #475569;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  line-height: 0;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+
+.ctrl-btn svg {
+  width: 30px;
+  height: 30px;
+}
+
+.ctrl-label {
+  font: 700 10px ui-sans-serif, system-ui, sans-serif;
+  line-height: 1;
+  letter-spacing: 0.3px;
+}
+
+.ctrl-btn:hover:not(:disabled) {
+  background: #ffffff;
+  border-color: #94a3b8;
+  color: #1e3a8a;
+}
+
+.ctrl-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
