@@ -5,6 +5,7 @@
 export { FourForcesElement } from './components/FourForces'
 export { ClimbPerformanceElement } from './components/ClimbPerformance'
 export { FlightPathOverviewElement } from './components/FlightPathOverview'
+export { PitchRollYawElement } from './components/PitchRollYaw'
 export {
   setEstimatedTimes,
   resetTimer,

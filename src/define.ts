@@ -5,7 +5,9 @@
 import { FourForcesElement } from './components/FourForces'
 import { ClimbPerformanceElement } from './components/ClimbPerformance'
 import { FlightPathOverviewElement } from './components/FlightPathOverview'
+import { PitchRollYawElement } from './components/PitchRollYaw'
 
 customElements.define('four-forces',          FourForcesElement)
 customElements.define('climb-performance',    ClimbPerformanceElement)
 customElements.define('flight-path-overview', FlightPathOverviewElement)
+customElements.define('pitch-roll-yaw',       PitchRollYawElement)
