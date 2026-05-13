@@ -1,0 +1,75 @@
+/*
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/.
+ */
+
+:host {
+  display: block;
+}
+
+.ad-root {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  background: white;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.ad-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  image-rendering: auto;
+}
+
+.ad-controls {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.9);
+  border-top: 1px solid #e2e8f0;
+  display: flex;
+  gap: 16px;
+  align-items: center;
+}
+
+.ad-control-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+
+.ad-label {
+  color: #64748b;
+  font: 11px/1 monospace;
+  white-space: nowrap;
+  min-width: 60px;
+}
+
+.ad-slider {
+  flex: 1;
+  accent-color: #0369a1;
+  height: 4px;
+}
+
+.ad-value {
+  color: #1e293b;
+  font: 11px/1 monospace;
+  min-width: 40px;
+  text-align: right;
+}
+
+.ad-select {
+  color: #1e293b;
+  background: white;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  font: 11px/1 monospace;
+  padding: 3px 6px;
+  cursor: pointer;
+}

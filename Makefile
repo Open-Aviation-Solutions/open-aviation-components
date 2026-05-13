@@ -3,7 +3,7 @@
 help:
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "%-12s %s\n", $$1, $$2}'
 
-node_modules: package-lock.json
+node_modules: package.json package-lock.json
 	npm install
 	@touch node_modules
 

@@ -28,6 +28,7 @@ export default defineConfig({
             { label: 'Flight Path Overview', slug: 'flight-path-overview' },
             { label: 'Four Forces',          slug: 'four-forces' },
             { label: 'Pitch Roll Yaw',       slug: 'pitch-roll-yaw' },
+            { label: 'Aerofoil Dynamics',    slug: 'aerofoil-dynamics' },
           ],
         },
       ],
