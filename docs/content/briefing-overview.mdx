@@ -19,27 +19,34 @@ The departure runway sits on the left, arrival on the right, with a dashed fligh
   import 'https://unpkg.com/@open-aviation-solutions/components/dist/lib/define.es.js';
 </script>
 
-<briefing-overview arrival-label="Arrival"></briefing-overview>
+<briefing-overview arrival-label="Arrival">
+  <briefing-topic label="Overview" time="1"></briefing-topic>
+  <briefing-topic label="Risk Analysis&#10;I'M SAFE &amp; PAVE" time="3"></briefing-topic>
+  <briefing-topic label="&quot;See and Avoid&quot;&#10;Our joint responsibility" time="2"></briefing-topic>
+  <briefing-topic label="Who has control" time="2"></briefing-topic>
+  <briefing-topic label="Today's Flight" time="2"></briefing-topic>
+  <briefing-topic label="Recap and Fly" time="2"></briefing-topic>
+</briefing-overview>
+```
 
-<script type="module">
-  const bov = document.querySelector('briefing-overview')
-  bov.topics = [
-    { label: 'Overview', time: 1 },
-    { label: "Risk Analysis", time: 3 },
-    // ...
-  ]
-  bov.setAttribute('plane-position', '2')
-</script>
+`&#10;` encodes a newline within an attribute value. Apostrophes need no escaping inside double-quoted attributes.
+
+To control the plane position, set the `plane-position` attribute:
+
+```js
+document.querySelector('briefing-overview').setAttribute('plane-position', '2')
 ```
 
 ## Properties and attributes
 
 | Name | Kind | Description |
 |------|------|-------------|
-| `topics` | property | Array of `{ label, time?, color?, labelColor? }`. `topics[0]` is the departure label; the rest are waypoints. Each `time` is the duration in minutes of the segment *after* that topic. Use `\n` in `label` for line breaks. Must be set as a DOM property — complex values cannot be passed as attributes |
+| `briefing-topic` | child element | Declares one topic. `label` (required) is the display name; `&#10;` encodes a newline. `time` (optional) is the segment duration in minutes. `color` (optional) overrides the waypoint circle fill. `label-color` (optional) overrides the label text colour. The first child is the departure label; the rest are waypoints |
 | `plane-position` | attribute | Integer position of the plane: `0` = departure runway, `1..N` = at waypoint *i*, `N+1` = arrival runway. Animates between positions with a 600 ms cubic ease-out |
-| `arrival-label` | attribute | Label shown under the right runway. Defaults to `ARRIVAL` |
+| `arrival-label` | attribute | Label shown under the right runway. Defaults to `Arrival` |
 | `controls` | boolean attribute | When present, renders a two-button control panel at the top-right corner: **Start flight** (gear-up lever icon) calls `setEstimatedTimes()` once and disables itself; re-enables if the timer is reset. **Direct-To** (D→ icon) advances `plane-position` by one, records the actual waypoint time, then disables itself for the lifetime of the element instance |
+| `controls-start` | boolean attribute | Shows only the Start button (gear-up icon). Use when the Direct-To button should not be available |
+| `controls-direct-to` | boolean attribute | Shows only the Direct-To button. Use when start has already occurred and only progression control is needed |
 
 ## Installation
 

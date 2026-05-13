@@ -14,13 +14,30 @@ The SVG has an intrinsic `viewBox="0 0 900 362"` and scales to its container's w
 
 ## Properties and attributes
 
-- **`topics`** (property only — not an attribute): `Array<{ label: string,
-  time?: number, color?: string, labelColor?: string }>`. The first entry is
-  the departure label (rendered under the left runway); the remaining entries
-  are waypoints. Each `time` is the duration in minutes of the segment
-  *starting* at that topic (so the first `time` is climb, the last is descent).
-  Use `\n` in `label` for line breaks. Set via the DOM property:
-  `element.topics = [...]`.
+- **`<briefing-topic>` child elements**: Declare topics declaratively in HTML.
+  Each `<briefing-topic>` element is read by the parent as a plain data
+  carrier — it does not need to be registered as a custom element. Supported
+  attributes:
+  - `label` (required): display name; use `&#10;` for a newline within the attribute.
+  - `time` (optional): segment duration in minutes starting at this topic.
+  - `color` (optional): overrides the waypoint circle fill colour.
+  - `label-color` (optional): overrides the label text colour.
+
+  The first child is the departure label (rendered under the left runway); the
+  remaining children are waypoints. Example:
+
+  ```html
+  <briefing-overview arrival-label="Arrival">
+    <briefing-topic label="Overview" time="1"></briefing-topic>
+    <briefing-topic label="Risk Analysis&#10;I'M SAFE &amp; PAVE" time="3"></briefing-topic>
+    <briefing-topic label="Today's Flight" time="2"></briefing-topic>
+  </briefing-overview>
+  ```
+
+  The parent queries `:scope > briefing-topic` in `connectedCallback` and on
+  any DOM mutation (via `MutationObserver`). Adding, removing, or changing a
+  `briefing-topic` child triggers a structural re-render.
+
 - **`plane-position`** attribute (number): controls where the plane sits and
   records waypoint actuals (when a departure time has been set via
   `setEstimatedTimes()`).
@@ -31,12 +48,22 @@ The SVG has an intrinsic `viewBox="0 0 900 362"` and scales to its container's w
   For sequential use (e.g. a slider stepped with next/prev), the full range is
   `0` through `topics.length`. Planned and actual times are only shown after
   `setEstimatedTimes()` has been called.
-- **`arrival-label`** attribute (string, default `ARRIVAL`): label shown under
+- **`arrival-label`** attribute (string, default `Arrival`): label shown under
   the right runway.
 - **`plane-image`** attribute (string, URL): image source for the plane icon.
   Accepts any URL including data URLs. Stored in shared state — whichever
   instance sets it first applies it to all instances on the page. Resets with
   `resetFlightPlan()`. Defaults to the bundled piper SVG.
+- **`controls`** attribute (boolean): shows both the Start and Direct-To
+  buttons. Equivalent to setting both `controls-start` and `controls-direct-to`.
+- **`controls-start`** attribute (boolean): shows only the Start button
+  (gear-up icon). Use when the Direct-To button should not be available.
+- **`controls-direct-to`** attribute (boolean): shows only the Direct-To
+  (next waypoint) button. Use when start has already occurred and only
+  progression control is needed.
+
+  All three attributes can be combined freely; `controls` acts as a shorthand
+  for both fine-grained ones.
 
 ## Starting the timer
 
@@ -57,9 +84,15 @@ computes the variance against the planned elapsed time at that waypoint.
 ## Shared state
 
 Every `<briefing-overview>` on the page shares the same flight plan and the
-same recorded actual times. The first instance to receive a `topics` value
-seeds the shared plan; subsequent instances without an explicit `topics` reuse
-it.
+same recorded actual times. The first instance with `<briefing-topic>` children
+seeds the shared plan; subsequent instances without children inherit it
+automatically.
+
+State mutations are also broadcast via `BroadcastChannel` (channel name
+`oas-briefing-overview`), so separate same-origin browsing contexts stay in
+sync automatically. This means clicking **Start** in the Marp presenter view
+(`?view=presenter`) propagates the departure time to the normal audience view,
+and vice versa.
 
 To reset the shared state, import the module-level mutators from the package:
 

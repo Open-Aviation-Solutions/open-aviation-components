@@ -23,6 +23,8 @@ import {
   setVariance,
   seedPlan,
   subscribe,
+  subscribePlanePosition,
+  broadcastPlanePosition,
 } from './sharedState'
 
 const sheet = new CSSStyleSheet()
@@ -173,9 +175,8 @@ function setAttrs(element: SVGElement, attrs: Record<string, string | number>): 
 }
 
 class BriefingOverviewElement extends HTMLElement {
-  static observedAttributes = ['plane-position', 'arrival-label', 'plane-image', 'controls', 'show-help']
+  static observedAttributes = ['plane-position', 'arrival-label', 'plane-image', 'controls', 'controls-start', 'controls-direct-to', 'show-help']
 
-  private _topics: Topic[] | null = null
   private _planePosition = 0
   private _arrivalLabel: string | null = null
 
@@ -184,6 +185,8 @@ class BriefingOverviewElement extends HTMLElement {
   private _animAngle = 0
   private _rafId: number | null = null
   private _unsubscribe: (() => void) | null = null
+  private _unsubscribePlanePos: (() => void) | null = null
+  private _mutationObserver: MutationObserver | null = null
 
   private _directToUsed = false
   private _helpLinkEl!: HTMLAnchorElement
@@ -405,10 +408,51 @@ class BriefingOverviewElement extends HTMLElement {
     const arrivalLabelAttr = this.getAttribute('arrival-label')
     if (arrivalLabelAttr !== null) this._arrivalLabel = arrivalLabelAttr
 
-    this._unsubscribe = subscribe(() => this._renderTransform())
+    this._unsubscribe = subscribe(() => {
+      if (this._resolvedTopics === null) {
+        this._renderStructural()
+        if (this._resolvedTopics !== null) {
+          const target = getTargetForPosition(this._resolvedWaypoints, this._planePosition)
+          this._animX = target.x
+          this._animY = target.y
+          this._animAngle = target.angle
+        }
+      }
+      this._renderTransform()
+    })
+
+    this._unsubscribePlanePos = subscribePlanePosition((elementIndex, newPos) => {
+      const all = Array.from(document.querySelectorAll<BriefingOverviewElement>('briefing-overview'))
+      if (all.indexOf(this) !== elementIndex) return
+      this._planePosition = newPos
+      this._directToUsed = true
+      this._animateTo(newPos)
+      this._updateControls()
+    })
+
+    this._readTopicsFromChildren()
+
+    this._mutationObserver = new MutationObserver(() => {
+      this._readTopicsFromChildren()
+      this._renderStructural()
+      this._renderTransform()
+    })
+    this._mutationObserver.observe(this, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['label', 'time', 'color', 'label-color'],
+    })
 
     this._renderStructural()
-    if (this.hasAttribute('controls')) this._ensureControls()
+    if (this._shouldShowPanel()) this._ensureControls()
+    // attributeChangedCallback fires before connectedCallback during element upgrade, so
+    // _animateTo may have already started an animation with stale (empty) waypoints.
+    // Cancel it and snap to the correct initial position now that waypoints are resolved.
+    if (this._rafId !== null) {
+      cancelAnimationFrame(this._rafId)
+      this._rafId = null
+    }
     const initial = getTargetForPosition(this._resolvedWaypoints, this._planePosition)
     this._animX = initial.x
     this._animY = initial.y
@@ -419,6 +463,10 @@ class BriefingOverviewElement extends HTMLElement {
   disconnectedCallback(): void {
     this._unsubscribe?.()
     this._unsubscribe = null
+    this._unsubscribePlanePos?.()
+    this._unsubscribePlanePos = null
+    this._mutationObserver?.disconnect()
+    this._mutationObserver = null
     if (this._rafId !== null) {
       cancelAnimationFrame(this._rafId)
       this._rafId = null
@@ -431,36 +479,39 @@ class BriefingOverviewElement extends HTMLElement {
       this._setPlanePosition(newPos)
     } else if (name === 'arrival-label') {
       this._arrivalLabel = value
-      if (this._topics !== null) seedPlan(this._topics, value ?? 'ARRIVAL')
+      this._readTopicsFromChildren()
       if (this.isConnected) {
         this._renderStructural()
         this._renderTransform()
       }
     } else if (name === 'plane-image') {
       setPlaneImage(value)
-    } else if (name === 'controls') {
-      if (value !== null) {
-        if (this.isConnected) this._ensureControls()
-        if (this._controlsEl) this._controlsEl.style.display = ''
-      } else {
-        if (this._controlsEl) this._controlsEl.style.display = 'none'
-      }
+    } else if (name === 'controls' || name === 'controls-start' || name === 'controls-direct-to') {
+      if (this.isConnected && this._shouldShowPanel()) this._ensureControls()
+      if (this._controlsEl) this._controlsEl.style.display = this._shouldShowPanel() ? '' : 'none'
+      this._syncButtonVisibility()
     } else if (name === 'show-help') {
       this._helpLinkEl.style.display = value === 'false' ? 'none' : ''
     }
   }
 
-  set topics(value: Topic[] | null) {
-    this._topics = value
-    if (value !== null) seedPlan(value, this._arrivalLabel ?? 'ARRIVAL')
-    if (this.isConnected) {
-      this._renderStructural()
-      this._renderTransform()
-    }
-  }
-
-  get topics(): Topic[] | null {
-    return this._topics
+  private _readTopicsFromChildren(): void {
+    const childTopics = Array.from(this.querySelectorAll<HTMLElement>(':scope > briefing-topic'))
+    if (childTopics.length === 0) return
+    const topics: Topic[] = childTopics.map(el => {
+      const topic: Topic = { label: el.getAttribute('label') ?? '' }
+      const timeAttr = el.getAttribute('time')
+      if (timeAttr !== null) {
+        const parsed = parseFloat(timeAttr)
+        if (!isNaN(parsed)) topic.time = parsed
+      }
+      const color = el.getAttribute('color')
+      if (color !== null) topic.color = color
+      const labelColor = el.getAttribute('label-color')
+      if (labelColor !== null) topic.labelColor = labelColor
+      return topic
+    })
+    seedPlan(topics, this._arrivalLabel ?? 'Arrival')
   }
 
   private _setPlanePosition(pos: number): void {
@@ -520,6 +571,16 @@ class BriefingOverviewElement extends HTMLElement {
     this._rafId = requestAnimationFrame(tick)
   }
 
+  private _shouldShowPanel(): boolean {
+    return this.hasAttribute('controls') || this.hasAttribute('controls-start') || this.hasAttribute('controls-direct-to')
+  }
+
+  private _syncButtonVisibility(): void {
+    const all = this.hasAttribute('controls')
+    if (this._startBtn) this._startBtn.style.display = (all || this.hasAttribute('controls-start')) ? '' : 'none'
+    if (this._directToBtn) this._directToBtn.style.display = (all || this.hasAttribute('controls-direct-to')) ? '' : 'none'
+  }
+
   private _ensureControls(): void {
     if (this._controlsEl) return
 
@@ -544,6 +605,7 @@ class BriefingOverviewElement extends HTMLElement {
 
     this._controlsEl = panel
     this.shadowRoot!.appendChild(panel)
+    this._syncButtonVisibility()
     this._updateControls()
   }
 
@@ -569,10 +631,14 @@ class BriefingOverviewElement extends HTMLElement {
     this.setAttribute('plane-position', String(newPos))
     this._directToUsed = true
     this._updateControls()
+
+    const all = Array.from(document.querySelectorAll<BriefingOverviewElement>('briefing-overview'))
+    const myIndex = all.indexOf(this)
+    if (myIndex !== -1) broadcastPlanePosition(myIndex, newPos)
   }
 
   private _renderStructural(): void {
-    this._resolvedTopics = this._topics ?? getFlightTopics()
+    this._resolvedTopics = getFlightTopics()
     const topics = this._resolvedTopics
     const arrivalLabel = this._arrivalLabel ?? getFlightArrivalLabel()
 
