@@ -12,6 +12,8 @@ import type { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js
 const sheet = new CSSStyleSheet()
 sheet.replaceSync(styles)
 
+const DEFAULT_CAMERA_POSITION = [2.8, 1.78, 3.30] as const
+
 // ── Physics constants ─────────────────────────────────────────────────────────
 // Speed model: airspeed converges to the lift=weight equilibrium for the current AoA:
 //   v_eq = √(W / (CL × LIFT_K))
@@ -465,7 +467,7 @@ class FourForcesElement extends HTMLElement {
 
     // Camera — side view, slightly elevated
     this._camera = new THREE.PerspectiveCamera(45, w / h, 0.1, 100)
-    this._camera.position.set(0, 0.6, 5)
+    this._camera.position.set(...DEFAULT_CAMERA_POSITION)
 
     // Orbit controls
     this._orbitControls = new OrbitControls(this._camera, this._renderer.domElement)
@@ -667,8 +669,7 @@ class FourForcesElement extends HTMLElement {
       obj.position.y += 0.1
 
       this._orbitControls!.target.set(0, 0, 0)
-      const camDist = Math.max(scaledSize.x, scaledSize.y, scaledSize.z) * 1.5
-      this._camera!.position.set(0, scaledSize.y * 0.3, camDist)
+      this._camera!.position.set(...DEFAULT_CAMERA_POSITION)
       this._orbitControls!.update()
 
       this._setLoading(false)

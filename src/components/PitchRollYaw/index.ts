@@ -12,6 +12,7 @@ const sheet = new CSSStyleSheet()
 sheet.replaceSync(styles)
 
 const DEFAULT_MODEL = 'https://open-aviation-solutions.github.io/open-aviation-components/aircraft.glb'
+const DEFAULT_CAMERA_POSITION = [2.32, 1.57, 2.36] as const
 
 interface AxisDef {
   id: string
@@ -187,6 +188,7 @@ class PitchRollYawElement extends HTMLElement {
     }
 
     root.appendChild(bar)
+
     shadow.appendChild(root)
 
     this._boundLoop = this._loop.bind(this)
@@ -382,7 +384,7 @@ class PitchRollYawElement extends HTMLElement {
     this._scene = new THREE.Scene()
 
     this._camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 100)
-    this._camera.position.set(0, 1, 5)
+    this._camera.position.set(...DEFAULT_CAMERA_POSITION)
 
     this._orbitControls = new OrbitControls(this._camera, this._renderer.domElement)
     this._orbitControls.enableDamping = true
@@ -483,8 +485,7 @@ class PitchRollYawElement extends HTMLElement {
         }
 
         this._orbitControls!.target.set(0, 0, 0)
-        const camDist = Math.max(scaledSize.x, scaledSize.y, scaledSize.z) * 1.5
-        this._camera!.position.set(0, scaledSize.y * 0.3, camDist)
+        this._camera!.position.set(...DEFAULT_CAMERA_POSITION)
         this._orbitControls!.update()
 
         this._modelReady = true
