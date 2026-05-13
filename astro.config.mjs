@@ -24,11 +24,11 @@ export default defineConfig({
         {
           label: 'Components',
           items: [
-            { label: 'Climb Performance',    slug: 'climb-performance' },
-            { label: 'Flight Path Overview', slug: 'flight-path-overview' },
-            { label: 'Four Forces',          slug: 'four-forces' },
-            { label: 'Pitch Roll Yaw',       slug: 'pitch-roll-yaw' },
-            { label: 'Aerofoil Dynamics',    slug: 'aerofoil-dynamics' },
+            { label: 'Aerofoil Dynamics',  slug: 'aerofoil-dynamics' },
+            { label: 'Briefing Overview', slug: 'briefing-overview' },
+            { label: 'Climb Performance', slug: 'climb-performance' },
+            { label: 'Four Forces',       slug: 'four-forces' },
+            { label: 'Pitch Roll Yaw',    slug: 'pitch-roll-yaw' },
           ],
         },
       ],

@@ -4,7 +4,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/.
  */
 
-// Module-scoped state shared by every <flight-path-overview> on the page.
+// Module-scoped state shared by every <briefing-overview> on the page.
 // A single flight plan and a single set of recorded actual times are reused
 // across every instance, so consecutive views of the same plan stay in sync.
 

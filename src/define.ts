@@ -4,12 +4,12 @@
 
 import { FourForcesElement } from './components/FourForces'
 import { ClimbPerformanceElement } from './components/ClimbPerformance'
-import { FlightPathOverviewElement } from './components/FlightPathOverview'
+import { BriefingOverviewElement } from './components/BriefingOverview'
 import { PitchRollYawElement } from './components/PitchRollYaw'
 import { AerofoilDynamicsElement } from './components/AerofoilDynamics'
 
 customElements.define('four-forces',          FourForcesElement)
 customElements.define('climb-performance',    ClimbPerformanceElement)
-customElements.define('flight-path-overview', FlightPathOverviewElement)
+customElements.define('briefing-overview',    BriefingOverviewElement)
 customElements.define('pitch-roll-yaw',       PitchRollYawElement)
 customElements.define('aerofoil-dynamics',    AerofoilDynamicsElement)

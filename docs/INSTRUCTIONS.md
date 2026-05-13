@@ -38,12 +38,12 @@ If a component class type is needed for TypeScript, import it separately:
 
 ```ts
 import '../../src/define'
-import type { FlightPathOverviewElement } from '../../src/components/FlightPathOverview'
+import type { BriefingOverviewElement } from '../../src/components/BriefingOverview'
 ```
 
-## Slider max for flight-path-overview demos
+## Slider max for briefing-overview demos
 
-The sequential `plane-position` range is `0` through `topics.length` (i.e. `max` = number of entries in the `topics` array, including the departure label). See `src/components/FlightPathOverview/INSTRUCTIONS.md` for details.
+The sequential `plane-position` range is `0` through `topics.length` (i.e. `max` = number of entries in the `topics` array, including the departure label). See `src/components/BriefingOverview/INSTRUCTIONS.md` for details.
 
 ## Content config
 

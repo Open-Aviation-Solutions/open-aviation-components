@@ -1,8 +1,8 @@
 ---
 ---
-<flight-path-overview id="fpo" controls arrival-label="Arrival"></flight-path-overview>
+<briefing-overview id="bov" controls arrival-label="Arrival"></briefing-overview>
 
-<div class="fpo-controls">
+<div class="bov-controls">
   <button id="prev">← Prev</button>
   <input id="pos" type="range" min="0" max="6" step="1" value="0" />
   <button id="next">Next →</button>
@@ -13,19 +13,19 @@
 </div>
 
 <style>
-  .fpo-controls {
+  .bov-controls {
     display: flex;
     flex-wrap: wrap;
     gap: 12px;
     align-items: center;
     margin-top: 16px;
   }
-  .fpo-controls input[type='range'] {
+  .bov-controls input[type='range'] {
     flex: 1;
     min-width: 200px;
     accent-color: var(--sl-color-accent, #cba6f7);
   }
-  .fpo-controls button {
+  .bov-controls button {
     background: var(--sl-color-bg-inline-code, #313244);
     color: var(--sl-color-gray-1, #cdd6f4);
     border: 1px solid var(--sl-color-gray-5, #45475a);
@@ -34,10 +34,10 @@
     cursor: pointer;
     font: inherit;
   }
-  .fpo-controls button:hover {
+  .bov-controls button:hover {
     background: var(--sl-color-gray-5, #45475a);
   }
-  .fpo-controls code {
+  .bov-controls code {
     background: var(--sl-color-bg-inline-code, #313244);
     padding: 2px 6px;
     border-radius: 3px;
@@ -46,10 +46,10 @@
 
 <script>
   import '../../src/define'
-  import { setEstimatedTimes, resetTimer, resetFlightPlan } from '../../src/components/FlightPathOverview/sharedState'
+  import { setEstimatedTimes, resetTimer, resetFlightPlan } from '../../src/components/BriefingOverview/sharedState'
 
-  const fpo = document.getElementById('fpo') as HTMLElement & { topics: unknown[] }
-  fpo.topics = [
+  const bov = document.getElementById('bov') as HTMLElement & { topics: unknown[] }
+  bov.topics = [
     { label: 'Overview', time: 1 },
     { label: "Risk Analysis\nI'M SAFE & PAVE", time: 3 },
     { label: '"See and Avoid"\nOur joint responsibility', time: 2 },
@@ -64,7 +64,7 @@
   const nextButton = document.getElementById('next') as HTMLButtonElement
 
   function update(position: number): void {
-    fpo.setAttribute('plane-position', String(position))
+    bov.setAttribute('plane-position', String(position))
     slider.value = String(position)
     label.textContent = String(position)
   }

@@ -4,7 +4,7 @@
 
 export { FourForcesElement } from './components/FourForces'
 export { ClimbPerformanceElement } from './components/ClimbPerformance'
-export { FlightPathOverviewElement } from './components/FlightPathOverview'
+export { BriefingOverviewElement } from './components/BriefingOverview'
 export { PitchRollYawElement } from './components/PitchRollYaw'
 export { AerofoilDynamicsElement } from './components/AerofoilDynamics'
 export {
@@ -12,4 +12,4 @@ export {
   resetTimer,
   resetFlightPlan,
   type Topic,
-} from './components/FlightPathOverview/sharedState'
+} from './components/BriefingOverview/sharedState'

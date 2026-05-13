@@ -1,6 +1,6 @@
 ---
 title: Aerofoil Dynamics
-description: A real-time 2D Lattice Boltzmann fluid simulation around a NACA aerofoil, showing how angle of attack and airspeed affect lift via flow visualisation.
+description: A real-time fluid simulation around a standard aerofoil profile, showing how angle of attack and airspeed affect lift and stalls via flow visualisation.
 ---
 
 import AerofoilDynamics from '../components/AerofoilDynamics.astro'
@@ -11,13 +11,13 @@ Adjust the **Speed** and **AoA** sliders to see how the flow field around the ae
 
 ## Physics
 
-The simulation uses the **Lattice Boltzmann Method (LBM)** D2Q9 scheme — a mesoscopic approach where fluid is modelled as populations of particles streaming and colliding on a regular grid. At each timestep:
+The simulation uses the **[Lattice Boltzmann Method](https://en.wikipedia.org/wiki/Lattice_Boltzmann_methods) (LBM)** D2Q9 scheme — a mesoscopic approach where fluid is modelled as populations of particles streaming and colliding on a regular grid. At each timestep:
 
 1. **Collision** — each cell relaxes its distribution functions toward a local Maxwell–Boltzmann equilibrium (BGK operator with relaxation time τ ≈ 0.59).
 2. **Streaming** — populations propagate to neighbouring cells along their velocity directions.
 3. **Bounce-back** — populations hitting the solid aerofoil surface reverse direction, enforcing a no-slip boundary.
 
-The aerofoil is a **NACA 4-digit profile** (default NACA 2412) generated analytically at startup and rasterised onto the LBM grid. Lift and drag are computed each frame via **Ladd's momentum-exchange method**: every time a fluid particle bounces off the solid surface, the reaction impulse is accumulated and averaged over the frame to give the net hydrodynamic force vector. This is then decomposed into lift (perpendicular to freestream) and drag (parallel to freestream) and normalised by dynamic pressure and chord to give C_L and C_D.
+The aerofoil is a **[National Advisory Committee for Aeronautics (NACA) 4-digit profile](https://en.wikipedia.org/wiki/NACA_airfoil)** (default: 2412) generated analytically at startup and rasterised onto the LBM grid. Lift and drag are computed each frame via **Ladd's momentum-exchange method**: every time a fluid particle bounces off the solid surface, the reaction impulse is accumulated and averaged over the frame to give the net hydrodynamic force vector. This is then decomposed into lift (perpendicular to freestream) and drag (parallel to freestream) and normalised by dynamic pressure and chord to give C_L and C_D.
 
 ### Reynolds number and simulation fidelity
 
@@ -75,7 +75,7 @@ The aerofoil silhouette is drawn as a smooth path on top of the upscaled vortici
 
 | Attribute | Default | Description |
 |-----------|---------|-------------|
-| `naca` | `2412` | NACA 4-digit profile code |
+| `naca` | `2412` | [National Advisory Committee for Aeronautics (NACA)](https://en.wikipedia.org/wiki/NACA_airfoil) 4-digit profile code |
 | `speed` | `0.4` | Normalised inflow speed (0–1) |
 | `aoa` | `5` | Angle of attack in degrees (−20 to +20) |
 | `show-controls` | _(absent)_ | Renders speed and AoA sliders inside the component |

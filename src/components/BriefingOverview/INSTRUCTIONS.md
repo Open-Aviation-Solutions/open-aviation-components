@@ -1,9 +1,9 @@
-# FlightPathOverview component
+# BriefingOverview component
 
-Source: `src/components/FlightPathOverview/index.ts` (custom element
-`flight-path-overview`), CSS in `index.css`.
+Source: `src/components/BriefingOverview/index.ts` (custom element
+`briefing-overview`), CSS in `index.css`.
 
-A pure SVG visualisation of a flight plan as a sequence of lesson topics. Two
+A pure SVG visualisation of a flight briefing as a sequence of lesson topics. Two
 runways (departure on the left, arrival on the right) with a dashed flight path
 between them, numbered waypoint circles at each topic, segment-time labels on
 each leg, and an animated piper that moves through the waypoints. As the plane
@@ -56,7 +56,7 @@ computes the variance against the planned elapsed time at that waypoint.
 
 ## Shared state
 
-Every `<flight-path-overview>` on the page shares the same flight plan and the
+Every `<briefing-overview>` on the page shares the same flight plan and the
 same recorded actual times. The first instance to receive a `topics` value
 seeds the shared plan; subsequent instances without an explicit `topics` reuse
 it.

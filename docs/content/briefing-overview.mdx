@@ -1,16 +1,16 @@
 ---
-title: Flight Path Overview
-description: A pure-SVG visualisation of a flight plan as a sequence of lesson topics — departure runway on the left, arrival runway on the right, and a dashed flight path with numbered waypoints between them.
+title: Briefing Overview
+description: A pure-SVG visualisation of a flight briefing as a sequence of lesson topics — departure runway on the left, arrival runway on the right, and a dashed flight path with numbered waypoints between them.
 ---
 
-import FlightPathOverview from '../components/FlightPathOverview.astro'
+import BriefingOverview from '../components/BriefingOverview.astro'
 import ComponentDescription from '../components/ComponentDescription.astro'
 
 <ComponentDescription />
 
 The departure runway sits on the left, arrival on the right, with a dashed flight path and numbered *lesson topic* waypoints between them. As the plane advances through the topics, the actual elapsed time is recorded against the planned time and a variance indicator shows whether the lesson is on track.
 
-<FlightPathOverview />
+<BriefingOverview />
 
 ## Usage
 
@@ -19,16 +19,16 @@ The departure runway sits on the left, arrival on the right, with a dashed fligh
   import 'https://unpkg.com/@open-aviation-solutions/components/dist/lib/define.es.js';
 </script>
 
-<flight-path-overview arrival-label="Arrival"></flight-path-overview>
+<briefing-overview arrival-label="Arrival"></briefing-overview>
 
 <script type="module">
-  const fpo = document.querySelector('flight-path-overview')
-  fpo.topics = [
+  const bov = document.querySelector('briefing-overview')
+  bov.topics = [
     { label: 'Overview', time: 1 },
     { label: "Risk Analysis", time: 3 },
     // ...
   ]
-  fpo.setAttribute('plane-position', '2')
+  bov.setAttribute('plane-position', '2')
 </script>
 ```
 
@@ -49,4 +49,4 @@ npm install @open-aviation-solutions/components
 
 ## Shared state
 
-All `<flight-path-overview>` elements on a page share the same plan and the same recorded actual times — useful when consecutive slides show the same flight at different positions. The first transition `0 → 1` records the departure timestamp; subsequent transitions record per-waypoint actuals. Import `resetTimer()` / `resetFlightPlan()` from the package to clear.
+All `<briefing-overview>` elements on a page share the same plan and the same recorded actual times — useful when consecutive slides show the same flight at different positions. The first transition `0 → 1` records the departure timestamp; subsequent transitions record per-waypoint actuals. Import `resetTimer()` / `resetFlightPlan()` from the package to clear.

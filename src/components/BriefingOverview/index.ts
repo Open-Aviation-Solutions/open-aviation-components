@@ -171,7 +171,7 @@ function setAttrs(element: SVGElement, attrs: Record<string, string | number>): 
   }
 }
 
-class FlightPathOverviewElement extends HTMLElement {
+class BriefingOverviewElement extends HTMLElement {
   static observedAttributes = ['plane-position', 'arrival-label', 'plane-image', 'controls']
 
   private _topics: Topic[] | null = null
@@ -765,4 +765,4 @@ class FlightPathOverviewElement extends HTMLElement {
   }
 }
 
-export { FlightPathOverviewElement }
+export { BriefingOverviewElement }
