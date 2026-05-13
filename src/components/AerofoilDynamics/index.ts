@@ -5,6 +5,7 @@
  */
 
 import styles from './index.css?inline'
+import { HELP_BASE_URL } from '../../config'
 
 // ── Constructable stylesheet ──────────────────────────────────────────────────
 const sheet = new CSSStyleSheet()
@@ -202,10 +203,11 @@ function vorticityToRgb(vort: number): [number, number, number] {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 class AerofoilDynamicsElement extends HTMLElement {
-  static observedAttributes = ['naca', 'speed', 'aoa', 'show-controls']
+  static observedAttributes = ['naca', 'speed', 'aoa', 'show-controls', 'show-help']
 
   // DOM
   private _root!: HTMLDivElement
+  private _helpLinkEl!: HTMLAnchorElement
   private _canvas!: HTMLCanvasElement
   private _offscreen!: HTMLCanvasElement
   private _ctx!: CanvasRenderingContext2D
@@ -336,7 +338,17 @@ class AerofoilDynamicsElement extends HTMLElement {
     nacaGroup.append(nacaLabel, this._nacaSelect)
 
     this._controlsEl.append(speedGroup, aoaGroup, nacaGroup)
-    this._root.append(this._canvas, this._controlsEl)
+
+    const helpLink = document.createElement('a')
+    helpLink.className = 'help-link'
+    helpLink.href = `${HELP_BASE_URL}/aerofoil-dynamics/`
+    helpLink.target = '_blank'
+    helpLink.rel = 'noopener noreferrer'
+    helpLink.title = 'Learn about this component'
+    helpLink.textContent = '?'
+    this._helpLinkEl = helpLink
+
+    this._root.append(this._canvas, this._controlsEl, helpLink)
     shadow.appendChild(this._root)
 
     this._speedSlider.addEventListener('input', () => {
@@ -406,6 +418,8 @@ class AerofoilDynamicsElement extends HTMLElement {
       if (this._sceneReady) this._rasteriseAndReset()
     } else if (name === 'show-controls') {
       this._controlsEl.style.display = this.hasAttribute('show-controls') ? '' : 'none'
+    } else if (name === 'show-help') {
+      this._helpLinkEl.style.display = value === 'false' ? 'none' : ''
     }
   }
 

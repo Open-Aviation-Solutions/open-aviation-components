@@ -5,6 +5,7 @@
  */
 
 import styles from './index.css?inline'
+import { HELP_BASE_URL } from '../../config'
 import type * as THREE from 'three'
 import type { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 
@@ -64,10 +65,11 @@ const FLOW_SPEED_SCALE = 3.0   // world-units/s at speed=1 (cruise)
 const FPA_SCALE        = 0.15  // converts smoothVsi to flight-path tilt (shared by particles + drag)
 
 class FourForcesElement extends HTMLElement {
-  static observedAttributes = ['height', 'model-path', 'model-rotation', 'model-offset', 'v_ne', 'v_no', 'v_1', 'cruise-kts', 'banking']
+  static observedAttributes = ['height', 'model-path', 'model-rotation', 'model-offset', 'v_ne', 'v_no', 'v_1', 'cruise-kts', 'banking', 'show-help']
 
   // DOM references
   private _root!: HTMLDivElement
+  private _helpLinkEl!: HTMLAnchorElement
   private _loadingEl!: HTMLDivElement
   private _asiEl!: HTMLCanvasElement
   private _vsiEl!: HTMLCanvasElement
@@ -148,6 +150,16 @@ class FourForcesElement extends HTMLElement {
     const root = document.createElement('div')
     root.className = 'ff-root'
     this._root = root
+
+    const helpLink = document.createElement('a')
+    helpLink.className = 'help-link'
+    helpLink.href = `${HELP_BASE_URL}/four-forces/`
+    helpLink.target = '_blank'
+    helpLink.rel = 'noopener noreferrer'
+    helpLink.title = 'Learn about this component'
+    helpLink.textContent = '?'
+    this._helpLinkEl = helpLink
+    root.appendChild(helpLink)
 
     const loadingEl = document.createElement('div')
     loadingEl.className = 'ff-loading'
@@ -342,7 +354,7 @@ class FourForcesElement extends HTMLElement {
     this._intersectionObserver = null
   }
 
-  attributeChangedCallback(name: string) {
+  attributeChangedCallback(name: string, _old: string | null, value: string | null) {
     if (name === 'height') this._applyHeight()
     if (name === 'v_ne' || name === 'v_no' || name === 'v_1') this._parseSpeedAttrs()
     if (name === 'cruise-kts') { const v = parseFloat(this.getAttribute('cruise-kts') ?? ''); this._cruiseKts = isNaN(v) ? CRUISE_KTS : v }
@@ -350,6 +362,7 @@ class FourForcesElement extends HTMLElement {
       this._showBank = this.hasAttribute('banking')
       if (this._bankSlider) this._bankSlider.style.display = this._showBank ? '' : 'none'
     }
+    if (name === 'show-help') this._helpLinkEl.style.display = value === 'false' ? 'none' : ''
   }
 
   // ── Height ──────────────────────────────────────────────────────────────────

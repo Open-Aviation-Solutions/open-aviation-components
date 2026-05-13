@@ -5,6 +5,7 @@
  */
 
 import styles from './index.css?inline'
+import { HELP_BASE_URL } from '../../config'
 import type * as THREE from 'three'
 import type { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 
@@ -70,11 +71,12 @@ interface WaggleState {
 }
 
 class PitchRollYawElement extends HTMLElement {
-  static observedAttributes = ['height', 'model-path', 'model-rotation', 'model-offset', 'range']
+  static observedAttributes = ['height', 'model-path', 'model-rotation', 'model-offset', 'range', 'show-help']
 
   // DOM references
   private _root!: HTMLDivElement
   private _loadingEl!: HTMLDivElement
+  private _helpLinkEl!: HTMLAnchorElement
   private _waggleBtnEl!: HTMLButtonElement
   private _barEl!: HTMLDivElement
   private _sliders: Record<string, HTMLInputElement> = {}
@@ -124,11 +126,21 @@ class PitchRollYawElement extends HTMLElement {
     this._loadingEl = loadingEl
     root.appendChild(loadingEl)
 
+    const helpLink = document.createElement('a')
+    helpLink.className = 'help-link'
+    helpLink.href = `${HELP_BASE_URL}/pitch-roll-yaw/`
+    helpLink.target = '_blank'
+    helpLink.rel = 'noopener noreferrer'
+    helpLink.title = 'Learn about this component'
+    helpLink.textContent = '?'
+    this._helpLinkEl = helpLink
+    root.appendChild(helpLink)
+
     const waggleBtn = document.createElement('button')
     waggleBtn.className = 'pry-waggle-btn'
     waggleBtn.style.display = 'none'
     waggleBtn.title = 'Waggle a random axis — can you identify it?'
-    waggleBtn.textContent = '?'
+    waggleBtn.textContent = '⟳'
     waggleBtn.addEventListener('click', () => this._triggerWaggle())
     this._waggleBtnEl = waggleBtn
     root.appendChild(waggleBtn)
@@ -216,9 +228,10 @@ class PitchRollYawElement extends HTMLElement {
     this._intersectionObserver = null
   }
 
-  attributeChangedCallback(name: string) {
+  attributeChangedCallback(name: string, _old: string | null, value: string | null) {
     if (name === 'height') this._applyHeight()
     if (name === 'range') this._applySliderRange()
+    if (name === 'show-help') this._helpLinkEl.style.display = value === 'false' ? 'none' : ''
   }
 
   _applyHeight() {

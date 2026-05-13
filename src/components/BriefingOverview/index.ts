@@ -5,6 +5,7 @@
  */
 
 import styles from './index.css?inline'
+import { HELP_BASE_URL } from '../../config'
 import planeSvgRaw from './plane.svg?raw'
 import {
   type Topic,
@@ -172,7 +173,7 @@ function setAttrs(element: SVGElement, attrs: Record<string, string | number>): 
 }
 
 class BriefingOverviewElement extends HTMLElement {
-  static observedAttributes = ['plane-position', 'arrival-label', 'plane-image', 'controls']
+  static observedAttributes = ['plane-position', 'arrival-label', 'plane-image', 'controls', 'show-help']
 
   private _topics: Topic[] | null = null
   private _planePosition = 0
@@ -185,6 +186,7 @@ class BriefingOverviewElement extends HTMLElement {
   private _unsubscribe: (() => void) | null = null
 
   private _directToUsed = false
+  private _helpLinkEl!: HTMLAnchorElement
   private _controlsEl: HTMLDivElement | null = null
   private _startBtn: HTMLButtonElement | null = null
   private _directToBtn: HTMLButtonElement | null = null
@@ -385,6 +387,16 @@ class BriefingOverviewElement extends HTMLElement {
     svg.appendChild(this._gTimings)
 
     shadow.appendChild(svg)
+
+    const helpLink = document.createElement('a')
+    helpLink.className = 'help-link'
+    helpLink.href = `${HELP_BASE_URL}/briefing-overview/`
+    helpLink.target = '_blank'
+    helpLink.rel = 'noopener noreferrer'
+    helpLink.title = 'Learn about this component'
+    helpLink.textContent = '?'
+    this._helpLinkEl = helpLink
+    shadow.appendChild(helpLink)
   }
 
   connectedCallback(): void {
@@ -433,6 +445,8 @@ class BriefingOverviewElement extends HTMLElement {
       } else {
         if (this._controlsEl) this._controlsEl.style.display = 'none'
       }
+    } else if (name === 'show-help') {
+      this._helpLinkEl.style.display = value === 'false' ? 'none' : ''
     }
   }
 

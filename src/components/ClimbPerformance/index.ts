@@ -5,6 +5,7 @@
  */
 
 import styles from './index.css?inline'
+import { HELP_BASE_URL } from '../../config'
 
 const sheet = new CSSStyleSheet()
 sheet.replaceSync(styles)
@@ -121,8 +122,9 @@ interface ChartArea {
 }
 
 export class ClimbPerformanceElement extends HTMLElement {
-  static observedAttributes = ['height', 'vs', 'cruise-kts']
+  static observedAttributes = ['height', 'vs', 'cruise-kts', 'show-help']
 
+  private _helpLinkEl!: HTMLAnchorElement
   private _canvas: HTMLCanvasElement
   private _ctx: CanvasRenderingContext2D
   private _dpr = 1
@@ -141,6 +143,17 @@ export class ClimbPerformanceElement extends HTMLElement {
     shadow.adoptedStyleSheets = [sheet]
     this._canvas = document.createElement('canvas')
     shadow.appendChild(this._canvas)
+
+    const helpLink = document.createElement('a')
+    helpLink.className = 'help-link'
+    helpLink.href = `${HELP_BASE_URL}/climb-performance/`
+    helpLink.target = '_blank'
+    helpLink.rel = 'noopener noreferrer'
+    helpLink.title = 'Learn about this component'
+    helpLink.textContent = '?'
+    this._helpLinkEl = helpLink
+    shadow.appendChild(helpLink)
+
     const ctx = this._canvas.getContext('2d')
     if (!ctx) throw new Error('canvas 2d context unavailable')
     this._ctx = ctx
@@ -186,6 +199,7 @@ export class ClimbPerformanceElement extends HTMLElement {
     if (name === 'height') this.style.height = value ?? ''
     if (name === 'vs') this._vsKts = value ? parseFloat(value) : null
     if (name === 'cruise-kts') this._cruiseKts = value ? parseFloat(value) : null
+    if (name === 'show-help') this._helpLinkEl.style.display = value === 'false' ? 'none' : ''
     this._dirty = true
   }
 
