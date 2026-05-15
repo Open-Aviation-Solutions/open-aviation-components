@@ -12,8 +12,9 @@ install: node_modules ## Install dependencies
 dev: node_modules ## Start dev server at localhost:4321
 	npm run dev
 
-build: node_modules ## Build docs site to ./dist/
+build: node_modules ## Build docs site to ./dist/ and component library to ./dist/lib/
 	npm run build
+	npm run build:lib
 
 build-lib: node_modules ## Build component library to ./dist/lib/
 	npm run build:lib

@@ -203,7 +203,7 @@ function vorticityToRgb(vort: number): [number, number, number] {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 class AerofoilDynamicsElement extends HTMLElement {
-  static observedAttributes = ['naca', 'speed', 'aoa', 'show-controls', 'show-help']
+  static observedAttributes = ['naca', 'speed', 'aoa', 'hide-controls', 'show-help']
 
   // DOM
   private _root!: HTMLDivElement
@@ -278,7 +278,6 @@ class AerofoilDynamicsElement extends HTMLElement {
     // Controls panel
     this._controlsEl = document.createElement('div')
     this._controlsEl.className = 'ad-controls'
-    this._controlsEl.style.display = 'none'
 
     const speedGroup = document.createElement('div')
     speedGroup.className = 'ad-control-group'
@@ -337,7 +336,13 @@ class AerofoilDynamicsElement extends HTMLElement {
     }
     nacaGroup.append(nacaLabel, this._nacaSelect)
 
-    this._controlsEl.append(speedGroup, aoaGroup, nacaGroup)
+    const resetBtn = document.createElement('button')
+    resetBtn.type = 'button'
+    resetBtn.className = 'ad-reset'
+    resetBtn.title = 'Reset simulation'
+    resetBtn.textContent = '↺'
+
+    this._controlsEl.append(speedGroup, aoaGroup, resetBtn, nacaGroup)
 
     const helpLink = document.createElement('a')
     helpLink.className = 'help-link'
@@ -366,6 +371,10 @@ class AerofoilDynamicsElement extends HTMLElement {
     this._nacaSelect.addEventListener('change', () => {
       this._naca = this._nacaSelect.value
       this._rasteriseAndReset()
+    })
+    resetBtn.addEventListener('click', () => {
+      this._initLBM()
+      this._resumeLoop()
     })
 
     this._boundLoop = this._loop.bind(this)
@@ -416,8 +425,8 @@ class AerofoilDynamicsElement extends HTMLElement {
       this._aoaSlider.value = String(this._aoa)
       this._aoaDisplay.textContent = `${this._aoa.toFixed(1)}°`
       if (this._sceneReady) this._rasteriseAndReset()
-    } else if (name === 'show-controls') {
-      this._controlsEl.style.display = this.hasAttribute('show-controls') ? '' : 'none'
+    } else if (name === 'hide-controls') {
+      this._controlsEl.style.display = this.hasAttribute('hide-controls') ? 'none' : ''
     } else if (name === 'show-help') {
       this._helpLinkEl.style.display = value === 'false' ? 'none' : ''
     }
