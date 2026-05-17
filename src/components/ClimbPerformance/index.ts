@@ -134,8 +134,8 @@ export class ClimbPerformanceElement extends HTMLElement {
   private _dirty = true
   private _ro: ResizeObserver | null = null
   private _io: IntersectionObserver | null = null
-  private _vsKts: number | null = null
-  private _cruiseKts: number | null = null
+  private _vsKts: number | null = 45
+  private _cruiseKts: number | null = 145
 
   constructor() {
     super()
@@ -197,14 +197,16 @@ export class ClimbPerformanceElement extends HTMLElement {
 
   attributeChangedCallback(name: string, _old: string | null, value: string | null) {
     if (name === 'height') this.style.height = value ?? ''
-    if (name === 'vs') this._vsKts = value ? parseFloat(value) : null
-    if (name === 'cruise-kts') this._cruiseKts = value ? parseFloat(value) : null
+    if (name === 'vs') this._vsKts = value === null ? 45 : (value ? parseFloat(value) : null)
+    if (name === 'cruise-kts') this._cruiseKts = value === null ? 145 : (value ? parseFloat(value) : null)
     if (name === 'show-help') this._helpLinkEl.style.display = value === 'false' ? 'none' : ''
     this._dirty = true
   }
 
   private _canvasX(clientX: number): number {
-    return clientX - this._canvas.getBoundingClientRect().left
+    const rect = this._canvas.getBoundingClientRect()
+    if (!rect.width) return 0
+    return (clientX - rect.left) / rect.width * this._canvas.clientWidth
   }
 
   private _updateCursor(canvasX: number) {

@@ -38,9 +38,9 @@ At the cursor position:
 
 ## Attributes
 
-- `height` — CSS height of the component (e.g., `400px`)
-- `vs` — stall speed in kts; calibrates x-axis labels when combined with `cruise-kts`
-- `cruise-kts` — speed at VMAX_NORM = 1.5; calibrates x-axis labels when combined with `vs`
+- `height` — CSS height of the component (e.g., `400px`). Defaults to `540px` via CSS.
+- `vs` — stall speed in kts. Defaults to `45`. Set to empty string (`vs=""`) for normalised labels.
+- `cruise-kts` — speed at VMAX_NORM = 1.5 in kts. Defaults to `145`. Set to empty string for normalised labels.
 
 ## No Three.js dependency
 
