@@ -1,0 +1,1 @@
+import"./AerofoilDynamics.astro_astro_type_script_index_0_lang.BngGniBa.js";const e=document.getElementById("banking-toggle"),t=document.getElementById("four-forces-demo");e.addEventListener("change",()=>{e.checked?t.setAttribute("banking",""):t.removeAttribute("banking")});
