@@ -137,6 +137,7 @@ class FourForcesElement extends HTMLElement {
   private _boundLoop!: () => void
   private _boundKeyDown!: (e: KeyboardEvent) => void
   private _boundPointerDown!: () => void
+  private _boundWheelStop!: (e: WheelEvent) => void
 
   // IntersectionObserver (set in connectedCallback)
   private _intersectionObserver: IntersectionObserver | null = null
@@ -324,6 +325,7 @@ class FourForcesElement extends HTMLElement {
     // NotSupportedError and leaves the element in a failed state).
     this._boundKeyDown     = this._handleGlobalKeyDown.bind(this)
     this._boundPointerDown = () => this.focus()
+    this._boundWheelStop   = (e: WheelEvent) => e.stopPropagation()
   }
 
   connectedCallback() {
@@ -332,6 +334,7 @@ class FourForcesElement extends HTMLElement {
     this.style.outline = 'none'
     this.addEventListener('pointerdown', this._boundPointerDown)
     this.addEventListener('keydown', this._boundKeyDown)
+    this.addEventListener('wheel', this._boundWheelStop)
     this._applyHeight()
     this._startScene()
 
@@ -349,6 +352,7 @@ class FourForcesElement extends HTMLElement {
   disconnectedCallback() {
     this.removeEventListener('keydown', this._boundKeyDown)
     this.removeEventListener('pointerdown', this._boundPointerDown)
+    this.removeEventListener('wheel', this._boundWheelStop)
     this._teardown()
     this._intersectionObserver?.disconnect()
     this._intersectionObserver = null
