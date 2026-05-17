@@ -1,4 +1,4 @@
-.PHONY: help dev build build-lib typecheck preview install
+.PHONY: help dev build build-lib typecheck preview install test
 
 help:
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "%-12s %s\n", $$1, $$2}'
@@ -18,6 +18,9 @@ build: node_modules ## Build docs site to ./dist/ and component library to ./dis
 
 build-lib: node_modules ## Build component library to ./dist/lib/
 	npm run build:lib
+
+test: node_modules ## Run tests
+	npm test
 
 typecheck: node_modules ## Run TypeScript type checking
 	npm run typecheck
