@@ -28,14 +28,16 @@ const DEFAULT_CAMERA_POSITION = [2.8, 1.78, 3.30] as const
 //   DRAG_K  = thrust / (CD(4°)×1²) = 0.30 / 0.04351 = 6.894  (so T=D → VSI=0 at cruise)
 //
 // Min-drag speed ≈ v where d(drag)/d(v²)=0 → v²=W/(LIFT_K)×√(INV_PIARe/CD0) ≈ 0.67 → ~82 kts
-// This places Vy ≈ +8° and Vx ≈ +10° at full power (demonstrable with the slider).
+// This places Vy ≈ +6° and Vx ≈ +10° at full power (demonstrable with the slider).
 //
 // VSI model: rate of climb = V × (T − D) / W (excess power / weight).
 // In a sustained climb, L ≈ W (arrows show equal lift and weight at steady state);
 // the climb is driven entirely by excess thrust, matching the course content.
 //
-// Throttle mapping: display 100% → physics 68%, display 60% → physics 60%.
-// Quadratic fitted through (0,0), (60,60), (100,68): physics(d) = −0.008·d² + 1.48·d
+// Throttle mapping: display 100% → physics 85%, display 60% → physics 60%.
+// Quadratic fitted through (0,0), (60,60), (100,85): physics(d) = −0.00375·d² + 1.225·d
+// The 85% top-end (was 68%) gives enough thrust headroom to sustain a 45° level turn,
+// which needs CD/CL_min × W × DRAG_K / (LIFT_K × cos 45°) ≈ 0.39 of thrust.
 const WEIGHT     = 0.7
 const T_MAX      = 0.5
 const BASE_ARROW = 1.5   // world units — arrow length at equilibrium
@@ -45,7 +47,10 @@ const LIFT_K     = 1.476
 const DRAG_K     = 6.894  // recalibrated for INV_PIARe = 0.060; T = D at 60%/+4°/v=1
 const CL0 = 0.30, CL_A = 2.5
 const CD0 = 0.030, INV_PIARe = 0.060  // higher induced drag → min-drag ≈ 82 kts → Vy ≠ Vx
-const K_VSI      = 8.0   // VSI scale: V×(T−D)/W × K_VSI → normalised VSI (1.0 = full gauge)
+const K_VSI      = 3.0   // VSI scale: V×(T−D)/W × K_VSI → normalised VSI (1.0 = full gauge).
+                         // Calibrated so 100% power + cruise pitch reaches ~0.55 gauge,
+                         // matching the prior FPA-feedback steady state, with Vy (α≈6°)
+                         // slightly higher than 4°-pitch climb. Low-power descent pegs at −1.
 const DT         = 0.016
 const CRUISE_KTS = 100
 
@@ -741,19 +746,22 @@ class FourForcesElement extends HTMLElement {
 
   // ── Physics tick ──────────────────────────────────────────────────────────────
   _tick() {
-    // AoA = pitch attitude minus flight-path angle (FPA).
-    // FPA is estimated from the previous-frame smoothVsi (same mapping used by the
-    // particle stream and drag arrow).  Clamping to ±1 prevents the large transient
-    // values of smoothVsi from producing a nonsensical AoA.
-    const fpa    = Math.max(-1, Math.min(1, this._smoothVsi)) * FPA_SCALE  // rad
-    const aoa    = this._attitude * Math.PI / 180 - fpa
+    // AoA = pitch attitude (the FPA correction is intentionally omitted). Coupling AoA to
+    // smoothVsi made CL lurch on power changes (CL drops in a climb because effective AoA
+    // shrinks as the flight path tilts up), and because vEq is defined by CL × vEq² = W,
+    // any CL change instantly moves vEq while speed lags by 5 s — so lift = CL × speed²
+    // visibly dipped below W during power-up transients. Treating AoA as purely pilot-
+    // commanded means CL only changes when the pilot moves the pitch slider, so power
+    // changes leave lift = W throughout (only VSI responds). The lift arrow still tilts
+    // with FPA via _updateArrows, so the descent-tilt visualisation is unaffected.
+    const aoa    = this._attitude * Math.PI / 180
     const CL     = CL0 + CL_A * aoa
     const CD     = CD0 + CL * CL * INV_PIARe
     const q      = this._speed * this._speed
     const drag   = CD * q * DRAG_K
-    // Non-linear throttle mapping: display 60% → physics 60% (equilibrium), display 100% → physics 68%
+    // Non-linear throttle mapping: display 60% → physics 60% (equilibrium), display 100% → physics 85%
     const d      = this._power
-    const physP  = -0.008 * d * d + 1.48 * d
+    const physP  = -0.00375 * d * d + 1.225 * d
     const thrust = (physP / 100) * T_MAX
 
     // Post-stall CL dropout: below VS1 (when CL is positive), lift drops as (v/VS1)²
@@ -775,31 +783,27 @@ class FourForcesElement extends HTMLElement {
     this._forces.thrust = Math.max(0.04, (thrust / T_MAX)  * BASE_ARROW)
     this._forces.drag   = Math.max(0.04, (drag   / T_MAX)  * BASE_ARROW)
 
-    // Airspeed converges to the aerodynamic equilibrium for the current AoA (lift = weight).
+    // Airspeed converges to the aerodynamic equilibrium for the current AoA and bank.
+    // In a level banked turn, vertical lift must equal weight, so total lift = W / cos(bank)
+    // and v_eq² · CL · LIFT_K = W / cos(bank). At bank = 0 this reduces to lift = weight.
     // At high AoA, v_eq is low → induced drag dominates → gives distinct Vx and Vy.
-    // Clamp CL to a small positive floor so v_eq never takes √(negative) at steep
-    // negative attitudes where the linear model gives CL < 0.
-    // Clamp CL floor → finite vEq; also cap vEq at 1.5× cruise so that at negative
-    // attitudes the equilibrium speed stays in a physically plausible range where
-    // thrust changes still have a visible effect on the VSI.
-    const CLpos = Math.max(0.05, CL)
-    const vEq   = Math.min(1.5, Math.sqrt(WEIGHT / (CLpos * LIFT_K)))
-    this._speed      += (vEq - this._speed) * DT * 1.0
+    // Clamp CL to a small positive floor so v_eq never takes √(negative) at steep negative
+    // attitudes; clamp cos(bank) to avoid blow-up near 90°; cap vEq at 1.5× cruise so that
+    // at negative attitudes the equilibrium speed stays physically plausible.
+    const CLpos   = Math.max(0.05, CL)
+    const cosBank = Math.max(0.2, Math.cos(this._bankDeg * Math.PI / 180))
+    const vEq     = Math.min(1.5, Math.sqrt(WEIGHT / (CLpos * LIFT_K * cosBank)))
+    this._speed      += (vEq - this._speed) * DT * 0.2
     this._speed       = Math.max(0.35, Math.min(2.2, this._speed))
 
     // Rate of climb from excess power at equilibrium: V_eq × (T − D_eq) / W.
     // Using v_eq (not transient speed) so that pitching up immediately raises VSI
-    // while the ASI needle drifts down separately as speed settles.
+    // while the ASI needle drifts down separately as speed settles. In a bank, vEq rises
+    // (more lift needed), dragEq rises with it, and the thrust margin captures the "you
+    // need more AoA and/or power to maintain altitude" effect without a separate term.
     const dragEq    = CD * vEq * vEq * DRAG_K
-    // Banking reduces the component of lift perpendicular to the flight path below
-    // the component of weight perpendicular to the flight path (W·cos γ ≈ W for small γ),
-    // causing the aircraft to sink unless the pilot adds back-pressure or power.
-    const bankRad      = this._bankDeg * Math.PI / 180
-    const liftPerpPath = lift * Math.cos(bankRad)
-    const bankSink     = (liftPerpPath - WEIGHT) / WEIGHT  // ≤ 0 whenever banking reduces lift_⊥ below W
     // In stall: power term scales down with stallFactor; lift deficit drives additional sink
     const vsiTarget = stallFactor * vEq * (thrust - dragEq) / WEIGHT * K_VSI
-                      + bankSink
                       - (1.0 - stallFactor)
     this._vsi       += (vsiTarget - this._vsi) * DT
     this._smoothVsi  = this._smoothVsi * 0.93 + this._vsi * 0.07
@@ -955,12 +959,13 @@ class FourForcesElement extends HTMLElement {
     const L       = this._forces.lift
     const liftTip = liftDir.clone().multiplyScalar(L)
 
-    // Decompose within the plane perpendicular to the airflow (same plane as lift itself):
-    //   non-horizontal: (0, liftTip.y, liftTip.z) — lies in the YZ plane, perpendicular to
-    //     airflow (which also lies in YZ); only purely vertical when the flight path is level
-    //   horizontal: (liftTip.x, 0, 0) — centripetal force, purely horizontal by construction
-    // This ensures both components are perpendicular to the airflow, as the lift is.
-    const vertEnd  = new THREE.Vector3(0, liftTip.y, liftTip.z)
+    // Decompose lift into world-vertical (Y) and the remainder.
+    //   vertical:   (0, liftTip.y, 0) — purely along world Y, so the dashed arrow is directly
+    //     comparable to the weight arrow in screen space regardless of camera angle.
+    //   horizontal: liftTip − vertical = (liftTip.x, 0, liftTip.z) — the centripetal X part
+    //     plus any forward Z from FPA tilt (visible as a forward lean in descending turns,
+    //     reinforcing the same "lift tilts forward in a descent" lesson as the main arrow).
+    const vertEnd  = new THREE.Vector3(0, liftTip.y, 0)
     const horizEnd = liftTip.clone()
 
     const ORIGIN = new THREE.Vector3()
@@ -980,7 +985,7 @@ class FourForcesElement extends HTMLElement {
 
     // Fade cones in as bank increases from zero (same pattern as weight components)
     const CONE_H = COMP_CONE_H
-    const horizLen = Math.abs(liftTip.x)   // horizontal = purely X; Z belongs to non-horiz
+    const horizLen = horizEnd.clone().sub(vertEnd).length()   // X (centripetal) + Z (forward in descent)
     const coneOpacity = Math.min(1, horizLen / (CONE_H * 2))
 
     if (coneOpacity < 0.01) {
