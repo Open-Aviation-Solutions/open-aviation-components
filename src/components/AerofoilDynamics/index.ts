@@ -137,28 +137,29 @@ function rasteriseAerofoil(
   for (let col = xMin; col <= xMax; col++) {
     let yTopMin = Infinity, yBotMax = -Infinity
 
-    // Scan upper surface — find the highest (smallest y in canvas coords, most negative local y)
+    // Scan upper surface — find the highest (smallest y in canvas coords, most negative local y).
+    // Only segments that actually straddle integer `col` contribute; interpolate in the segment's
+    // own direction (t=0 at point i, t=1 at point i+1) so that backward-going segments still
+    // resolve to the correct y at the crossing.
     for (let i = 0; i < upper.length - 1; i++) {
       const [x0, y0] = toGrid(upper[i].x, upper[i].y)
       const [x1, y1] = toGrid(upper[i+1].x, upper[i+1].y)
-      const xLo = Math.min(x0, x1), xHi = Math.max(x0, x1)
-      if (xLo <= col + 0.5 && xHi >= col - 0.5) {
-        const t = xHi === xLo ? 0.5 : (col - xLo) / (xHi - xLo)
-        const y = y0 + t * (y1 - y0)
-        if (y < yTopMin) yTopMin = y
-      }
+      const xMinS = Math.min(x0, x1), xMaxS = Math.max(x0, x1)
+      if (col < xMinS || col > xMaxS) continue
+      const t = xMaxS === xMinS ? 0.5 : (col - x0) / (x1 - x0)
+      const y = y0 + t * (y1 - y0)
+      if (y < yTopMin) yTopMin = y
     }
 
     // Scan lower surface — find the lowest (largest y in canvas coords)
     for (let i = 0; i < lower.length - 1; i++) {
       const [x0, y0] = toGrid(lower[i].x, lower[i].y)
       const [x1, y1] = toGrid(lower[i+1].x, lower[i+1].y)
-      const xLo = Math.min(x0, x1), xHi = Math.max(x0, x1)
-      if (xLo <= col + 0.5 && xHi >= col - 0.5) {
-        const t = xHi === xLo ? 0.5 : (col - xLo) / (xHi - xLo)
-        const y = y0 + t * (y1 - y0)
-        if (y > yBotMax) yBotMax = y
-      }
+      const xMinS = Math.min(x0, x1), xMaxS = Math.max(x0, x1)
+      if (col < xMinS || col > xMaxS) continue
+      const t = xMaxS === xMinS ? 0.5 : (col - x0) / (x1 - x0)
+      const y = y0 + t * (y1 - y0)
+      if (y > yBotMax) yBotMax = y
     }
 
     if (yTopMin > yBotMax) continue
@@ -203,7 +204,7 @@ function vorticityToRgb(vort: number): [number, number, number] {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 class AerofoilDynamicsElement extends HTMLElement {
-  static observedAttributes = ['naca', 'speed', 'aoa', 'hide-controls', 'show-help']
+  static observedAttributes = ['height', 'naca', 'speed', 'aoa', 'hide-controls', 'show-help']
 
   // DOM
   private _root!: HTMLDivElement
@@ -304,8 +305,8 @@ class AerofoilDynamicsElement extends HTMLElement {
     this._aoaSlider = document.createElement('input')
     this._aoaSlider.type = 'range'
     this._aoaSlider.className = 'ad-slider'
-    this._aoaSlider.min = '-20'
-    this._aoaSlider.max = '20'
+    this._aoaSlider.min = '-16'
+    this._aoaSlider.max = '16'
     this._aoaSlider.step = '0.5'
     this._aoaSlider.value = String(this._aoa)
     this._aoaDisplay = document.createElement('span')
@@ -411,7 +412,9 @@ class AerofoilDynamicsElement extends HTMLElement {
   }
 
   attributeChangedCallback(name: string, _old: string | null, value: string | null) {
-    if (name === 'naca') {
+    if (name === 'height') {
+      this.style.height = value ?? ''
+    } else if (name === 'naca') {
       this._naca = value ?? '2412'
       this._nacaSelect.value = this._naca
       if (this._sceneReady) this._rasteriseAndReset()
@@ -421,7 +424,7 @@ class AerofoilDynamicsElement extends HTMLElement {
       this._speedDisplay.textContent = this._speed.toFixed(2)
       if (this._sceneReady) this._setInflow()
     } else if (name === 'aoa') {
-      this._aoa = Math.max(-20, Math.min(20, parseFloat(value ?? '5') || 5))
+      this._aoa = Math.max(-16, Math.min(16, parseFloat(value ?? '5') || 5))
       this._aoaSlider.value = String(this._aoa)
       this._aoaDisplay.textContent = `${this._aoa.toFixed(1)}°`
       if (this._sceneReady) this._rasteriseAndReset()

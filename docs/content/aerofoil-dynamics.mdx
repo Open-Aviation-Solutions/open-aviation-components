@@ -32,11 +32,13 @@ At the default speed (0.4) the LBM runs at **Re ≈ 150**, because the lattice M
 | Bumblebee | 3 mm | 1 m/s | ~200 |
 | **This simulation (speed=0.4)** | — | — | **~150** |
 
-At Re ≈ 150, viscous skin friction is roughly 50× larger than at Cessna Re, so C_D is greatly inflated and the lift-to-drag ratio (≈ 0.9 here vs ≈ 50–80 for a real wing) is not representative of aircraft performance. C_L is qualitatively correct — the right sign, and it rises with AoA and drops at stall — but its magnitude is somewhat depressed by the thick laminar boundary layer.
+At Re ≈ 150, viscous skin friction is roughly 50× larger than at Cessna Re, so C_D is greatly inflated and the lift-to-drag ratio (≈ 0.9 here vs ≈ 50–80 for a real wing) is not representative of aircraft performance. C_L rises with AoA, has the right sign, and shows visible flow separation and wake growth as α approaches the real stall angle.
+
+**Note on post-stall behaviour.** A real wing's lift drops sharply at the stall angle because the upper-surface boundary layer detaches close to the leading edge and the suction peak collapses. Resolving that requires a boundary layer many cells thick across the chord — at the simulated Re and grid resolution there is essentially no resolved boundary layer (δ/chord ≈ 1/√Re ≈ 1 grid cell), so the suction-peak-collapse mechanism cannot be reproduced. Past the real stall angle C_L would therefore plateau rather than drop, which is misleading; for this reason the AoA slider is capped at ±16°, around the real-world stall angle of NACA 2412.
 
 The simulation cannot be simply rescaled to Cessna Re: the flow topology is different (thick separated boundary layer vs thin attached one), so the coefficients reflect different physics, not the same physics at a different magnitude. Achieving Re > 1 000 in a real-time 200 × 80 browser simulation would require turbulence modelling and a larger grid.
 
-**The component is therefore best used as a qualitative flow visualiser** — it correctly shows flow acceleration over the upper surface, pressure-driven lift, wake formation, and stall onset. The displayed C_L and C_D values are physically correct for the simulated Re but should not be compared directly to published aerofoil data.
+**The component is therefore best used as a qualitative flow visualiser** — it correctly shows flow acceleration over the upper surface, pressure-driven lift, wake formation, and the onset of stall up to α_stall. The displayed C_L and C_D values are physically correct for the simulated Re but should not be compared directly to published aerofoil data.
 
 ### Incompressible assumption
 
@@ -75,9 +77,10 @@ The aerofoil silhouette is drawn as a smooth path on top of the upscaled vortici
 
 | Attribute | Default | Description |
 |-----------|---------|-------------|
+| `height` | `420px` | CSS height of the component |
 | `naca` | `2412` | [National Advisory Committee for Aeronautics (NACA)](https://en.wikipedia.org/wiki/NACA_airfoil) 4-digit profile code |
 | `speed` | `0.4` | Normalised inflow speed (0–1) |
-| `aoa` | `5` | Angle of attack in degrees (−20 to +20) |
+| `aoa` | `5` | Angle of attack in degrees (−16 to +16) |
 | `show-controls` | _(absent)_ | Renders speed and AoA sliders inside the component |
 
 ## Events
