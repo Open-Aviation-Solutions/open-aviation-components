@@ -1,6 +1,6 @@
 ---
 title: Climb Performance
-description: Side-by-side interactive charts showing Thrust vs Airspeed and Power vs Airspeed for a propeller aircraft.
+description: An interactive chart showing thrust and power available versus required across the flight envelope — explore best angle and best rate of climb.
 ---
 
 import ClimbPerformance from '../components/ClimbPerformance.astro'
@@ -8,11 +8,62 @@ import ComponentDescription from '../components/ComponentDescription.astro'
 
 <ComponentDescription />
 
-The green-shaded region in each chart is the excess available over required — this excess is what enables climbing. Drag the cursor across both charts to explore how excess thrust (which drives climb *angle*, Vx) and excess power (which drives climb *rate*, Vy) vary with airspeed.
+Students learn Vx and Vy early and quickly memorise the definitions and the speeds for their aircraft. What rarely follows is an understanding of *why* the two speeds are different — why best angle and best rate don't coincide. Without that, the numbers stay arbitrary, and thinking about performance in unusual aircraft or conditions requires starting from scratch.
+
+The charts make the reason visible. Vx sits where the thrust-available curve peaks above the thrust-required curve; Vy sits where the power surplus is greatest — and those peaks are at different speeds because of how power relates to thrust and velocity. Moving the cursor between the two markers and watching the green regions shift turns an abstract relationship into something a student can see and reason about directly.
 
 <ClimbPerformance />
 
-## Usage
+## Description
+
+The Climb Performance tool shows two charts side by side: **thrust vs airspeed** on the left, and **power vs airspeed** on the right. Both charts display what is available from the engine alongside what the aircraft needs to maintain level flight, so you can see at a glance where climb performance comes from.
+
+Drag the vertical cursor left and right across the charts (or use the arrow keys) to explore performance at any airspeed. The cursor snaps automatically to the key speeds: stall, Vx, Vy, minimum drag speed, and maximum speed.
+
+At each cursor position:
+- **Green fill** shows the excess — thrust or power beyond what level flight needs
+- **Labels on each curve** show the exact values at that speed
+- **Percentage** shows how much excess or deficit exists between available and required
+
+The two markers indicate the best climb speeds:
+- **Vx (sky blue)** — best angle of climb: maximum excess thrust, giving the most height gained per distance travelled
+- **Vy (purple)** — best rate of climb: maximum excess power, giving the most height gained per minute
+
+## For instructors
+
+Use it during ground briefings to make the relationship between speed and climb performance concrete:
+
+- **Why Vx and Vy are different speeds** — the thrust chart peaks at a lower speed than the power chart; this is why best angle is always slower than best rate. Students often memorise these as arbitrary numbers — the charts show why the difference exists
+- **What happens below Vx** — drag rises steeply as speed falls, consuming the excess thrust needed to climb. Use this to explain why obstacle clearance climbs must be flown accurately, not conservatively slow
+- **What happens above Vy** — excess power shrinks as speed increases, so climbing faster than Vy sacrifices rate of climb for no gain. Move the cursor from Vy toward cruise speed and watch the green region narrow
+- **Cruise vs climb trade-off** — at cruise speeds the green region is small or gone, which is why aircraft do not climb efficiently at cruise power and speed
+
+## For trainees
+
+Move the cursor to each marked speed and read the labels:
+
+1. Start at **Vx** and note how large the excess thrust is relative to the excess power — this is why the angle is steep but the rate is modest
+2. Move to **Vy** and compare: excess power is at its peak, even though excess thrust has already fallen. Rate of climb is highest here
+3. Drag toward cruise speed — watch both green regions shrink. This is the performance your aircraft gives up when you let the nose drop and speed build after takeoff
+4. Try the region below Vx — excess thrust falls quickly, and below stall it disappears entirely
+
+The charts use a normalised speed scale rather than knots, so they represent the shape of climb performance for any piston aircraft with a fixed-pitch propeller. The proportions and key speeds are physically correct even without aircraft-specific numbers.
+
+## Key speeds
+
+| Speed | Color | Definition |
+|-------|-------|------------|
+| **Vx** | sky blue | Best angle of climb — maximum excess thrust (TA − TR) |
+| **Vy** | purple | Best rate of climb — maximum excess power (PA − PR) |
+| **Vmd** | slate | Minimum drag speed — best glide |
+
+## Interaction
+
+- Click and drag anywhere on either chart to move the cursor.
+- The cursor snaps to VS, Vx, Vy, and Vmd when nearby — use this to compare excess thrust and excess power at each key speed.
+- Click the component then use **← / →** arrow keys to step the cursor.
+
+## Embedding this component
 
 ```html
 <script type="module">
@@ -29,20 +80,7 @@ The green-shaded region in each chart is the excess available over required — 
 | `height` | `400px` | CSS height of the component |
 | `vs` | — | Stall speed in kts. When set alongside `cruise-kts`, x-axis tick labels are shown in kts |
 | `cruise-kts` | — | Speed at the right edge of the chart (Vmax = 1.5 × Vmd). Used with `vs` to calibrate kts axis labels |
-
-## Interaction
-
-- Click and drag anywhere on either chart to move the cursor.
-- The cursor snaps to VS, Vx, Vy, and Vmd when nearby — use this to compare excess thrust and excess power at each key speed.
-- Click the component then use **← / →** arrow keys to step the cursor.
-
-## Key speeds
-
-| Speed | Color | Definition |
-|-------|-------|------------|
-| **Vx** | sky blue | Best angle of climb — maximum excess thrust (TA − TR) |
-| **Vy** | purple | Best rate of climb — maximum excess power (PA − PR) |
-| **Vmd** | slate | Minimum drag speed — best glide |
+| `show-help` | — | Set to `"false"` to hide the in-component help (?) link |
 
 ## Installation
 

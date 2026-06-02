@@ -1,6 +1,6 @@
 ---
 title: Briefing Overview
-description: A pure-SVG visualisation of a flight briefing as a sequence of lesson topics — departure runway on the left, arrival runway on the right, and a dashed flight path with numbered waypoints between them.
+description: A visual flight plan timeline showing lesson topics as waypoints along a dashed flight path — with optional timing tracking to keep ground briefings on schedule.
 ---
 
 import BriefingOverview from '../components/BriefingOverview.astro'
@@ -8,11 +8,42 @@ import ComponentDescription from '../components/ComponentDescription.astro'
 
 <ComponentDescription />
 
-The departure runway sits on the left, arrival on the right, with a dashed flight path and numbered *lesson topic* waypoints between them. As the plane advances through the topics, the actual elapsed time is recorded against the planned time and a variance indicator shows whether the lesson is on track.
+Ground briefings are where the lesson is set up, and their quality directly influences how much a student retains and can apply in the air. Without a visible structure, briefings can feel like a stream of information: students lose track of where they are in the content, and instructors lose track of time. Both outcomes reduce what gets transferred to the flight.
+
+A visible agenda changes both dynamics. Students who can see the shape of the lesson before it starts arrive with accurate expectations — they know how many topics there are, roughly how long each takes, and where the flight fits in. That reduces the cognitive load of simply *following the briefing*, leaving more capacity for the content itself. For instructors, actively tracking variance builds the pacing habit that separates good briefings from rushed ones.
 
 <BriefingOverview />
 
-## Usage
+## Description
+
+The Briefing Overview shows a lesson ground briefing as a series of numbered topic bubbles on a dashed flight path between two runways. An animated aircraft marker moves through the topics as the briefing progresses. When timing is started, the component tracks how long each topic actually takes and shows a variance against the plan.
+
+The built-in controls let you run the overview interactively:
+- **Start flight** (lever icon) — starts the timer at departure
+- **Direct to →** — advances the aircraft to the next topic, recording the actual time at that waypoint
+- **Variance** — shown in the footer once timing is underway, comparing planned against actual elapsed time
+
+This component uses no external assets — it is a pure SVG visualisation with no Three.js or canvas dependency.
+
+## For instructors
+
+Use it as a visible agenda at the start of any ground briefing:
+
+- **Setting expectations** — show students the shape of the lesson before you begin, so they know how many topics there are and roughly how long each takes
+- **Staying on time** — click Direct-To as each topic ends to track variance; a growing positive number is a signal to speed up or cut a topic
+- **Projector use** — the SVG scales to any container width, so it works on a laptop screen or a classroom projector
+
+The component is well-suited to building into lesson slides (e.g. Slidev) or displaying on a second screen during a tablet-based lesson.
+
+## For trainees
+
+The overview gives you a map of the ground briefing before it starts:
+
+1. Note how many topics there are and the time allocated to each
+2. Watch the aircraft marker advance as each topic is completed
+3. Use the footer variance to gauge whether the lesson is running to time — useful context if the instructor needs to abbreviate a topic toward the end
+
+## Embedding this component
 
 ```html
 <script type="module">
@@ -47,6 +78,7 @@ document.querySelector('briefing-overview').setAttribute('plane-position', '2')
 | `controls` | boolean attribute | When present, renders a two-button control panel at the top-right corner: **Start flight** (gear-up lever icon) calls `setEstimatedTimes()` once and disables itself; re-enables if the timer is reset. **Direct-To** (D→ icon) advances `plane-position` by one, records the actual waypoint time, then disables itself for the lifetime of the element instance |
 | `controls-start` | boolean attribute | Shows only the Start button (gear-up icon). Use when the Direct-To button should not be available |
 | `controls-direct-to` | boolean attribute | Shows only the Direct-To button. Use when start has already occurred and only progression control is needed |
+| `show-help` | attribute | Set to `"false"` to hide the in-component help (?) link |
 
 ## Installation
 

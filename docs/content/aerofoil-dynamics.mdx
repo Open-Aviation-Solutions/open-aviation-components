@@ -1,13 +1,56 @@
 ---
 title: Aerofoil Dynamics
-description: A real-time fluid simulation around a standard aerofoil profile, showing how angle of attack and airspeed affect lift and stalls via flow visualisation.
+description: An interactive flow visualisation around a wing section — see how angle of attack and airspeed change the air flowing over the wing, and where stall comes from.
 ---
 
 import AerofoilDynamics from '../components/AerofoilDynamics.astro'
+import ComponentDescription from '../components/ComponentDescription.astro'
 
-Adjust the **Speed** and **AoA** sliders to see how the flow field around the aerofoil responds. Increasing angle of attack creates a pressure differential that lifts the aerofoil. At high AoA, flow separation appears in the wake — the onset of stall.
+<ComponentDescription />
+
+Lift is invisible. Students hear that wings work because of how the air moves around them, but without seeing the flow it is hard to build a feel for *why* changing the angle of attack changes the lift — or what is actually happening when a wing stalls.
+
+This tool is an attempt to put the airflow and turbulence on screen. Move the angle of attack slider and watch the flow respond in real time: faster air over the top, slower air underneath, and at high angles a messy separated wake where the wing stops flying. NOTE: the calculation does collapse at the extremes — which is why there's a reset button. There are also still some issues I need to resolve with the lift.
 
 <AerofoilDynamics />
+
+## Description
+
+The Aerofoil Dynamics tool runs a live two-dimensional fluid simulation around a standard wing section (a [NACA aerofoil](https://en.wikipedia.org/wiki/NACA_airfoil)). Air flows in from the left, the wing sits in the middle, and the wake trails off to the right. Coloured streaks show the direction and intensity of the swirling motion in the air, and small particles drift along with the flow so you can see the streamlines themselves.
+
+The on-screen controls let you change what the wing is doing:
+
+- **Speed** — how fast the air is flowing over the wing
+- **AoA** — the wing's angle of attack, from −16° to +16°
+- **NACA** — the wing profile, from a thin symmetric section through to a high-camber wing
+- **↺** — reset the simulation if it gets unsettled
+
+A small heads-up display in the corner reports the lift and drag coefficients (C_L and C_D) the simulation is producing, and an orange arrow shows the total aerodynamic reaction with its lift and drag components dashed in.
+
+## For instructors
+
+Use it during Principles of Flight briefings to make the airflow story concrete:
+
+- **Why lift changes with angle of attack** — start at 0°, then sweep AoA upward and watch C_L climb with it. The pressure imbalance you describe in theory shows up as visible flow acceleration over the top surface
+- **What a stall actually looks like** — push AoA past about 12–15° and the smooth wake breaks down into a thick, chaotic separated region. Students can see the flow detaching rather than just hearing about it
+- **Camber and shape** — switch between the symmetric 0012 and the cambered 4412 or 6412 sections to show that camber gives lift at zero angle of attack, and that the wing shape itself does work
+- **Speed and lift together** — drop the speed slider and the lift arrow shrinks even at the same angle of attack — useful for setting up the lift formula before you write it on the board
+
+## For trainees
+
+A few minutes with this before your Principles of Flight session pays off:
+
+1. Set the NACA profile to **2412** (a typical light-aircraft wing) and the AoA to **5°** — note how the flow accelerates over the top and the lift arrow points upward
+2. Slowly increase AoA toward **15°** and watch the wake. The point where the smooth flow breaks down is the **stall**
+3. Reduce AoA back to a small positive value, then drop the **speed** — observe that lift falls off even though the angle of attack hasn't changed
+4. Switch to the symmetric **0012** profile and set AoA to **0°** — there is no lift. Then increase AoA — the symmetric wing only produces lift when angled into the flow
+5. Try a high-camber **6412** section at **0°** AoA — it produces lift just from its shape
+
+## A note on what you are seeing
+
+The simulation is a real fluid model, but it runs at a much lower scale than a real aircraft (closer to insect-flight conditions than a Cessna). The flow patterns — pressure-driven lift, the wake, the onset of stall — are physically correct and useful for teaching. The actual numbers (C_L, C_D) should not be compared with published aerofoil data for full-size aircraft.
+
+The background colours show **vorticity** (how the air is spinning), not pressure. Red marks the upper-surface boundary layer, blue marks the lower one, and the white free-stream surrounds them. When red and blue regions grow large and disorganised in the wake, that is the visual signature of stall.
 
 ## Physics
 
@@ -58,7 +101,7 @@ Note that the colours do **not** show pressure. Red is always on the upper surfa
 
 The aerofoil silhouette is drawn as a smooth path on top of the upscaled vorticity field, independent of grid resolution, so the outline remains crisp regardless of zoom level. Moving particles are coloured by local flow speed from dark blue (slow) through green to red (fast).
 
-## Usage
+## Embedding this component
 
 ```html
 <script type="module">
@@ -82,6 +125,7 @@ The aerofoil silhouette is drawn as a smooth path on top of the upscaled vortici
 | `speed` | `0.4` | Normalised inflow speed (0–1) |
 | `aoa` | `5` | Angle of attack in degrees (−16 to +16) |
 | `show-controls` | _(absent)_ | Renders speed and AoA sliders inside the component |
+| `show-help` | — | Set to `"false"` to hide the in-component help (?) link |
 
 ## Events
 

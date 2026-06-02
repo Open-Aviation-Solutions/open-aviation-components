@@ -1,1 +1,1 @@
-export const HELP_BASE_URL = 'https://openaviation.solutions/open-aviation-components'
+export const HELP_BASE_URL = 'https://open-aviation-solutions.github.io/open-aviation-components'
