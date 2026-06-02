@@ -1,6 +1,6 @@
 ---
 title: Pitch Roll Yaw
-description: An interactive 3D aircraft viewer with pitch, roll, and yaw sliders for exploring the three axes of flight and rotational terminology.
+description: An interactive 3D aircraft viewer for exploring the three axes of flight — pitch, roll, and yaw — and the rotational terminology used in flight training.
 ---
 
 import PitchRollYaw from '../components/PitchRollYaw.astro'
@@ -8,13 +8,43 @@ import ComponentDescription from '../components/ComponentDescription.astro'
 
 <ComponentDescription />
 
-Three sliders rotate a 3D aircraft model about the lateral (pitch), longitudinal (roll), and normal (yaw) axes. Rotations compose body-frame — yawing then pitching applies pitch about the aircraft's own lateral axis. Hover a slider cell to highlight its axis line in the scene. The **?** button triggers a waggle animation on a random axis for the student to identify. Supports cross-tab synchronization via BroadcastChannel for presenter/slide pairing.
+Pitch, roll, and yaw appear in lesson one of most courses, and students can quickly repeat the definitions. What takes longer is genuinely owning the vocabulary — being able to look at a manoeuvre and name the axes involved without pausing to reconstruct the answer from first principles.
+
+The gap between memorising and owning usually closes in the aircraft, through repetition. This tool offers a shortcut: a few minutes of moving the sliders — especially before the first lesson — lets the student arrive already comfortable with which word maps to which motion. The waggle quiz formalises this. When you can identify an axis by watching the motion alone, the association is learned rather than looked up.
 
 <PitchRollYaw />
 
 <small>Aircraft: <a href="https://sketchfab.com/3d-models/bristol-f2b-first-world-war-airplane-1df44f8ecf0b4b3888e07f841c1197ce" target="_blank" rel="noopener">Bristol F.2B (First World War)</a> — public domain, Canadian Ingenium museum</small>
 
-## Usage
+## Description
+
+The Pitch Roll Yaw tool shows a 3D aircraft with three sliders — one each for **pitch**, **roll**, and **yaw**. Moving a slider rotates the aircraft about that axis so you can see exactly what the motion looks like and which axis it occurs around.
+
+Each slider controls one axis of rotation:
+- **Pitch** — nose up or nose down, rotating about the lateral (wing-tip-to-wing-tip) axis
+- **Roll** — tilting left or right, rotating about the longitudinal (nose-to-tail) axis
+- **Yaw** — turning left or right, rotating about the normal (top-to-bottom) axis
+
+Hover over a slider to highlight its axis line in the scene. Use the **?** button to trigger a waggle animation on a random axis — try to identify which axis is moving before you check. Rotations compose body-frame — yawing then pitching applies pitch about the aircraft's own lateral axis. Multiple embeds on a page (or across tabs) synchronise via BroadcastChannel for presenter/slide pairing.
+
+## For instructors
+
+Use it when introducing Effects of Controls to connect the textbook terminology with something tangible:
+
+- **Axis names** — show each axis in turn and demonstrate the motion, so students build the association between the label and the movement before they ever sit in an aircraft
+- **Mixing rotations** — move two sliders and observe how the primary controls produce secondary effects (e.g. adverse yaw during roll)
+- **The waggle button** — ask a student to identify the axis without looking at the slider; useful as a quick check during ground briefings or revision sessions
+
+## For trainees
+
+Work through the three axes before your first lesson to familiarise yourself with the terminology:
+
+1. Centre all sliders, then move **Pitch** — identify the elevator as the control that produces this motion
+2. Centre again, then move **Roll** — identify the ailerons
+3. Centre again, then move **Yaw** — identify the rudder
+4. Try mixing pitch and roll simultaneously and observe how the aircraft attitude changes in three dimensions
+
+## Embedding this component
 
 ```html
 <script type="module">
@@ -33,6 +63,7 @@ Three sliders rotate a 3D aircraft model about the lateral (pitch), longitudinal
 | `model-rotation` | `0,0,0` | `x,y,z` rotation in degrees applied at load |
 | `model-offset` | `0,0,0` | `x,y,z` translation applied after auto-centring |
 | `range` | `45` | Symmetric slider range in degrees (sliders go −N to +N) |
+| `show-help` | — | Set to `"false"` to hide the in-component help (?) link |
 
 ## Dependencies
 
