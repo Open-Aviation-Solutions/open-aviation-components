@@ -13,6 +13,16 @@ export default defineConfig({
       title: 'Open Aviation Components',
       description: 'Interactive aviation training web components.',
       customCss: ['./docs/styles/custom.css'],
+      head: [
+        {
+          tag: 'script',
+          attrs: {
+            defer: true,
+            src: 'https://static.cloudflareinsights.com/beacon.min.js',
+            'data-cf-beacon': '{"token": "c996028d44e34f17a30b5bc693372d9e"}',
+          },
+        },
+      ],
       social: [
         {
           icon: 'github',
