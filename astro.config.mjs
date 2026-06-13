@@ -3,9 +3,17 @@ import { defineConfig } from 'astro/config'
 import starlight from '@astrojs/starlight'
 import sitemap from '@astrojs/sitemap'
 
+const SITE = 'https://open-aviation-solutions.github.io'
+const BASE = '/open-aviation-components'
+
+// Open Aviation Solutions brand social card, served from this site's base path.
+// Source of truth for the image is the website repo (public/og-image.png); the
+// copy here keeps each GitHub Pages deploy self-contained.
+const ogImageUrl = `${SITE}${BASE}/og-image.png`
+
 export default defineConfig({
-  site: 'https://open-aviation-solutions.github.io',
-  base: '/open-aviation-components',
+  site: SITE,
+  base: BASE,
   outDir: './dist',
   srcDir: './docs',
   publicDir: './docs/public',
@@ -15,6 +23,10 @@ export default defineConfig({
       description: 'Interactive aviation training web components.',
       customCss: ['./docs/styles/custom.css'],
       head: [
+        { tag: 'meta', attrs: { property: 'og:image', content: ogImageUrl } },
+        { tag: 'meta', attrs: { property: 'og:image:width', content: '1200' } },
+        { tag: 'meta', attrs: { property: 'og:image:height', content: '630' } },
+        { tag: 'meta', attrs: { name: 'twitter:image', content: ogImageUrl } },
         {
           tag: 'script',
           attrs: {
