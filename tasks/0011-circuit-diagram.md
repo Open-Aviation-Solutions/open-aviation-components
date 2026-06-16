@@ -1,8 +1,9 @@
 # 0011 — `<circuit-diagram>` component (3D circuit / procedure viewer)
 
-**Status:** in progress — core component implemented 2026-06-16 (commit `81239b7`,
-branch `3d-circuit-component`); docs + verification still outstanding (see
-Implementation progress below).
+**Status:** in progress — component + docs implemented and building 2026-06-16
+(branch `3d-circuit-component`). Typecheck and full build pass; a browser-based
+visual check of the rendered scene is still outstanding (see Implementation
+progress below).
 
 ## Implementation progress (2026-06-16)
 
@@ -33,20 +34,33 @@ Implementation progress below).
 - Turn smoothing: `CatmullRomCurve3` (centripetal, tension 0.5), sampled by arc
   length at ~15 m spacing. Tune if turns look wrong once rendered.
 
+**Docs — done and pushed:**
+
+- `docs/components/CircuitDiagram.astro` — wrapper embedding the worked example
+  (standard left-hand circuit in blue + engine-failure glide approach in red).
+- `docs/content/circuit-diagram.mdx` — page with coordinate-system explanation,
+  the ft↔m note (1000 ft ≈ 305 m), instructor/trainee guidance, and the
+  `<circuit-path>` authoring reference.
+- Sidebar entry added in `astro.config.mjs` (`Circuit Diagram`, slug
+  `circuit-diagram`), alphabetically between Briefing Overview and Climb
+  Performance.
+
+**Toolchain — done:** the dev environment has no local Node, so the `Makefile`
+now falls back to running the Node tooling inside a container (podman/docker)
+with the working tree bind-mounted. `make typecheck`, `make build`, etc. work
+unchanged. Override the image with `NODE_IMAGE=...`.
+
+**Verified:** `make typecheck` passes clean; `make build` builds both the docs
+site (the `circuit-diagram` page generates and appears in the sitemap, with the
+element + child paths in the HTML) and the library bundle.
+
 **Still to do:**
 
-- **Verification** — typecheck/build/visual check have **not** been run: the dev
-  environment has no Node and no container runtime (Docker/podman absent, no
-  passwordless sudo). The component is unverified; sort out a local toolchain
-  (or run on another machine) before trusting it. Likely tuning once it renders:
-  ribbon overlap blending / `renderOrder`, vertical-exaggeration default,
-  windsock size/placement, label scale, designator orientation.
-- **Docs** (not started):
-  - `docs/components/CircuitDiagram.astro` — wrapper embedding the tag with the
-    worked example, `<script>` importing `'../../src/define'`.
-  - `docs/content/circuit-diagram.mdx` — page with a standard circuit + a
-    contrasting procedure (e.g. glide approach); show the ft↔m conversion.
-  - Sidebar entry in `astro.config.mjs`: `{ label: 'Circuit Diagram', slug: 'circuit-diagram' }`.
+- **Visual / runtime check in a browser** (`make dev`) — the build confirms it
+  compiles and server-renders, but the WebGL behaviour is unverified. Likely
+  tuning once it renders: ribbon overlap blending / `renderOrder`,
+  `vertical-exaggeration` default, windsock size/placement, label scale,
+  runway-designator orientation, and the default camera framing.
 - Publish as a new minor version alongside the existing components.
 
 ---

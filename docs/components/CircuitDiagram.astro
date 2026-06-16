@@ -1,0 +1,26 @@
+---
+---
+<circuit-diagram
+  height="520px"
+  runway="27"
+  vertical-exaggeration="4"
+  show-help="false"
+>
+  <circuit-path
+    label="Standard circuit"
+    color="#3b82f6cc"
+    points="0,0,0; 1500,0,75; 2100,0,150; 2100,-850,300; -400,-850,300; -1100,-550,180; -1400,0,90; 0,0,0"
+    segment-labels="0:Upwind; 2:Crosswind; 3:Downwind · 1000 ft; 4:Base; 5:Final"
+  ></circuit-path>
+
+  <circuit-path
+    label="Glide approach"
+    color="#ef4444cc"
+    points="-400,-850,300; -1000,-650,210; -1400,-200,120; -150,0,12"
+    segment-labels="0:Engine failure abeam · best glide; 2:Aim for the threshold"
+  ></circuit-path>
+</circuit-diagram>
+
+<script>
+  import '../../src/define'
+</script>
