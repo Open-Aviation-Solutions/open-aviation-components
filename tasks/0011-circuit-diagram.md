@@ -45,22 +45,41 @@ progress below).
   `circuit-diagram`), alphabetically between Briefing Overview and Climb
   Performance.
 
-**Toolchain — done:** the dev environment has no local Node, so the `Makefile`
-now falls back to running the Node tooling inside a container (podman/docker)
-with the working tree bind-mounted. `make typecheck`, `make build`, etc. work
-unchanged. Override the image with `NODE_IMAGE=...`.
+**Toolchain — done:** the dev environment has no local Node, so all `make`
+targets run the Node tooling inside a single local container image
+(`Containerfile`, built on `node:22-bookworm-slim` with Chromium's OS libs)
+with the working tree bind-mounted. `make typecheck` / `build` / `test` / `dev`
+work unchanged. One image is used for everything; override with
+`TOOLING_IMAGE=...`. `node_modules` must be installed under this glibc image
+(not Alpine/musl).
 
-**Verified:** `make typecheck` passes clean; `make build` builds both the docs
-site (the `circuit-diagram` page generates and appears in the sitemap, with the
-element + child paths in the HTML) and the library bundle.
+**Screenshots — done:** `make screenshot` builds the site, downloads the
+matching Chromium (`make browsers`, into git-ignored `.playwright-browsers/`),
+serves the build with `astro preview`, and drives headless Chromium via
+Playwright (`scripts/screenshot.mjs`) with software-WebGL flags
+(`--use-gl=angle --use-angle=swiftshader --enable-unsafe-swiftshader`). Output
+goes to git-ignored `screenshots/`. `playwright` added as a devDependency.
+
+**Verified:** `make typecheck` passes; `make build` builds the docs site
+(circuit-diagram page + sitemap) and the library bundle; `make screenshot`
+produces a correct render — both ribbons, segment labels, legend, terrain/grid,
+and windsock all show. So the WebGL scene is confirmed working, not just
+compiling.
+
+**Tuning to consider (from the first render):**
+
+- At the default oblique camera the circuit spans ~3 km, so a 20 m ribbon reads
+  as a thin line rather than a flat ribbon. Either widen `path-width`, scale it
+  with the scene, or accept that the ribbon character only shows when zoomed in.
+- Runway surface + the painted designator are hard to see at that zoom (1500 ×
+  30 m against a ~3 km circuit). Consider emphasising the runway (outline /
+  brighter markings) or a closer default framing.
+- Re-check ribbon overlap blending / `renderOrder` and windsock size/placement
+  once the above are decided.
 
 **Still to do:**
 
-- **Visual / runtime check in a browser** (`make dev`) — the build confirms it
-  compiles and server-renders, but the WebGL behaviour is unverified. Likely
-  tuning once it renders: ribbon overlap blending / `renderOrder`,
-  `vertical-exaggeration` default, windsock size/placement, label scale,
-  runway-designator orientation, and the default camera framing.
+- Apply the tuning above (needs a human aesthetic call).
 - Publish as a new minor version alongside the existing components.
 
 ---
