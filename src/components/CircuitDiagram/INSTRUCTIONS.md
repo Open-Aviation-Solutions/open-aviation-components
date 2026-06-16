@@ -18,10 +18,12 @@ Runway-centric, metres:
 - **y** — lateral offset; **`+y = right`** looking down `+x`.
 - **alt** — height above the ground plane.
 
-`_toWorld()` maps `(x, y, alt)` → Three.js `(x, alt × verticalExaggeration, -y)`.
-The `-y` keeps `+y` reading as "right" in a Y-up right-handed scene. Altitude is
-multiplied by `vertical-exaggeration` (default 4) because a real circuit is
-kilometres wide but only ~300 m high and would otherwise look flat.
+`_toWorld()` maps `(x, y, alt)` → Three.js `(x, alt × verticalExaggeration, y)`.
+Looking down `+x` (the landing direction), Three.js puts `+z` on the viewer's
+right, so `worldZ = +y` makes `+y` read as "right" (and a left-hand circuit,
+which uses negative `y`, correctly appears on the left). Altitude is multiplied
+by `vertical-exaggeration` (default 3) because a real circuit is kilometres wide
+but only ~300 m high and would otherwise look flat.
 
 ## Key internals
 
@@ -31,13 +33,15 @@ kilometres wide but only ~300 m high and would otherwise look flat.
   (terrain, grid, runway, windsock, one group per path) so they can be disposed
   and rebuilt wholesale when a geometry-affecting attribute changes
   (`_rebuildScene()`).
-- **Ribbons** — each path's waypoints are smoothed with a `CatmullRomCurve3`
-  (centripetal, tension 0.5) and sampled by arc length; `_buildRibbonGeometry()`
-  expands each sample to two vertices offset ±`path-width`/2 **horizontally**
-  (perpendicular = up × tangent), so the ribbon stays level across its width
-  while tilting with the climb gradient. Material is `MeshBasicMaterial` with
-  `transparent`, `depthWrite: false`, `side: DoubleSide` so overlapping
-  translucent ribbons blend.
+- **Ribbons** — `_smoothCorners()` rounds only the corners (a tangent fillet /
+  quadratic Bézier at each interior waypoint, cut back by `corner-radius` and
+  clamped to half the shorter leg) and leaves the straight legs intact, so the
+  circuit shape is preserved. `_buildRibbonGeometry()` then expands each sampled
+  point to two vertices offset ±`path-width`/2 **horizontally** (perpendicular =
+  up × tangent), so the ribbon stays level across its width while tilting with
+  the climb gradient. Material is `MeshBasicMaterial` with `transparent`,
+  `depthWrite: false`, `side: DoubleSide` so overlapping translucent ribbons
+  blend.
 - **Colour + transparency** — `parseColor()` accepts `#rrggbbaa`, `#rrggbb`, or
   `rgba(...)`; transparency is carried in the colour itself.
 - **Segment labels** — `segment-labels="index:text; …"`, where segment `index`
@@ -70,8 +74,9 @@ optional `segment-labels`.
 | `runway` | `27` | Runway designator (drives the painted number and the runway heading) |
 | `runway-length` | `1500` | Runway length in metres |
 | `runway-width` | `30` | Runway width in metres |
-| `vertical-exaggeration` | `4` | Multiplier applied to altitude for display |
+| `vertical-exaggeration` | `3` | Multiplier applied to altitude for display |
 | `path-width` | `20` | Ribbon width in metres (narrower than the runway) |
+| `corner-radius` | `100` | Corner fillet radius in metres (`0` = sharp corners) |
 | `wind-from` | runway heading | Direction in degrees the wind blows *from*; orients the windsock |
 | `show-windsock` | `true` | Show the larger-than-life windsock (`false` hides) |
 | `show-grid` | `true` | Show the faint ground distance grid (`false` hides) |

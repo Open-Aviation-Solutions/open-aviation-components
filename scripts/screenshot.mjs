@@ -48,6 +48,14 @@ try {
     const url = `http://localhost:${server.port}${BASE}/${target.slug}/`
     await page.goto(url, { waitUntil: 'load' })
 
+    // Optional corner-radius override (for tuning), applied before the scene
+    // settles so the rebuild has finished by capture time.
+    if (process.env.CIRCUIT_CORNER) {
+      await page.evaluate(([selector, radius]) => {
+        document.querySelector(selector)?.setAttribute('corner-radius', radius)
+      }, [target.selector, process.env.CIRCUIT_CORNER])
+    }
+
     // Wait for the component's scene to mount: a sized <canvas> inside its
     // shadow root, then a short settle for the first rendered frames.
     await page.waitForFunction((selector) => {
@@ -57,9 +65,29 @@ try {
     }, target.selector, { timeout: 20000 })
     await page.waitForTimeout(1500)
 
-    const outputPath = new URL(target.file, outputDir).pathname
+    // Optional overhead (plan) view: reposition the camera straight above the
+    // framed centre, looking down, with the runway pointing up the screen.
+    const topDown = process.env.CIRCUIT_VIEW === 'top'
+    if (topDown) {
+      await page.evaluate((selector) => {
+        const host = document.querySelector(selector)
+        const camera = host?._camera
+        const controls = host?._orbitControls
+        if (!camera || !controls) return
+        controls.enableDamping = false
+        const target = controls.target
+        camera.position.set(target.x, target.y + 6000, target.z + 0.01)
+        camera.up.set(1, 0, 0)
+        camera.lookAt(target)
+        controls.update()
+      }, target.selector)
+      await page.waitForTimeout(600)
+    }
+
+    const file = topDown ? target.file.replace('.png', '-top.png') : target.file
+    const outputPath = new URL(file, outputDir).pathname
     await page.locator(target.selector).screenshot({ path: outputPath })
-    console.log(`captured ${target.file}`)
+    console.log(`captured ${file}`)
   }
 } catch (error) {
   failed = true

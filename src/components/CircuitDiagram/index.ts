@@ -17,8 +17,10 @@ const BROADCAST_CHANNEL = 'circuit-diagram-sync'
 const DEFAULT_RUNWAY = '27'
 const DEFAULT_RUNWAY_LENGTH = 1500
 const DEFAULT_RUNWAY_WIDTH = 30
-const DEFAULT_VERTICAL_EXAGGERATION = 4
+const DEFAULT_VERTICAL_EXAGGERATION = 3
 const DEFAULT_PATH_WIDTH = 20
+const DEFAULT_CORNER_RADIUS = 100
+const CORNER_SEGMENTS = 10
 
 /** A single waypoint, in the runway-centric data frame (metres). */
 type Waypoint = [x: number, y: number, alt: number]
@@ -97,6 +99,7 @@ class CircuitDiagramElement extends HTMLElement {
     'runway-width',
     'vertical-exaggeration',
     'path-width',
+    'corner-radius',
     'wind-from',
     'show-windsock',
     'show-grid',
@@ -273,6 +276,12 @@ class CircuitDiagramElement extends HTMLElement {
     return this._numberAttr('path-width', DEFAULT_PATH_WIDTH)
   }
 
+  /** Corner fillet radius in metres; `0` keeps sharp corners. */
+  private get _cornerRadius(): number {
+    const value = parseFloat(this.getAttribute('corner-radius') ?? '')
+    return Number.isFinite(value) && value >= 0 ? value : DEFAULT_CORNER_RADIUS
+  }
+
   /** Compass heading the runway points toward (e.g. "27" → 270°). */
   private get _runwayHeading(): number {
     const leading = this._runwayDesignator.match(/\d+/)
@@ -289,11 +298,12 @@ class CircuitDiagramElement extends HTMLElement {
   /**
    * Map a data-frame waypoint to Three.js world coordinates.
    * worldX = along-runway distance, worldY = exaggerated altitude (up),
-   * worldZ = -lateral so that +y in the data reads as "right" looking down +x.
+   * worldZ = lateral. Looking down +x (the landing direction) Three.js puts +z
+   * on the viewer's right, so worldZ = +y makes +y in the data read as "right".
    */
   private _toWorld(x: number, y: number, alt: number): THREE.Vector3 {
     const THREE = this._THREE!
-    return new THREE.Vector3(x, alt * this._verticalExaggeration, -y)
+    return new THREE.Vector3(x, alt * this._verticalExaggeration, y)
   }
 
   // ---- path parsing ------------------------------------------------------
@@ -538,12 +548,10 @@ class CircuitDiagramElement extends HTMLElement {
 
     const worldPoints = path.points.map(([x, y, alt]) => this._toWorld(x, y, alt))
 
-    // Smooth the polyline into arcs with a Catmull-Rom spline, then sample it
-    // by arc length so turns curve rather than mitre at sharp corners.
-    const curve = new THREE.CatmullRomCurve3(worldPoints, false, 'centripetal', 0.5)
-    const curveLength = curve.getLength()
-    const divisions = Math.max(worldPoints.length * 2, Math.round(curveLength / 15))
-    const sampled = curve.getSpacedPoints(divisions)
+    // Round only the corners (a tangent fillet at each interior waypoint) and
+    // keep the legs dead straight, so the circuit shape is preserved rather
+    // than pulled out of shape by a spline running through every point.
+    const sampled = this._smoothCorners(path.points).map(([x, y, alt]) => this._toWorld(x, y, alt))
 
     const ribbonGeometry = this._buildRibbonGeometry(THREE, sampled, this._pathWidth)
     const { hex, opacity } = parseColor(path.color)
@@ -576,6 +584,51 @@ class CircuitDiagramElement extends HTMLElement {
 
     this._scene!.add(group)
     return { group, ribbonGeometry, ribbonMaterial, labelSprites, visible: true }
+  }
+
+  /**
+   * Round each interior corner with a tangent fillet, leaving the straight legs
+   * untouched. At waypoint P (neighbours A, B) we cut back by `cornerRadius`
+   * along each leg — clamped to half the shorter leg so adjacent fillets never
+   * overlap — and replace the corner with a quadratic Bézier through those two
+   * points with P as the control point. Distances are measured in the ground
+   * plane (x, y) so the radius is a real horizontal distance; altitude is
+   * interpolated along with it.
+   */
+  private _smoothCorners(points: Waypoint[]): Waypoint[] {
+    if (points.length < 3) return points.map(point => [...point] as Waypoint)
+
+    const radius = this._cornerRadius
+    const groundDistance = (a: Waypoint, b: Waypoint) => Math.hypot(a[0] - b[0], a[1] - b[1])
+    const lerp = (a: Waypoint, b: Waypoint, t: number): Waypoint => [
+      a[0] + (b[0] - a[0]) * t,
+      a[1] + (b[1] - a[1]) * t,
+      a[2] + (b[2] - a[2]) * t,
+    ]
+
+    const result: Waypoint[] = [[...points[0]] as Waypoint]
+    for (let index = 1; index < points.length - 1; index++) {
+      const previous = points[index - 1]
+      const corner = points[index]
+      const next = points[index + 1]
+      const toPrevious = groundDistance(corner, previous)
+      const toNext = groundDistance(corner, next)
+      const cut = Math.min(radius, toPrevious / 2, toNext / 2)
+
+      if (cut < 1 || toPrevious < 1e-3 || toNext < 1e-3) {
+        result.push([...corner] as Waypoint)
+        continue
+      }
+
+      const entry = lerp(corner, previous, cut / toPrevious)
+      const exit = lerp(corner, next, cut / toNext)
+      for (let step = 0; step <= CORNER_SEGMENTS; step++) {
+        const t = step / CORNER_SEGMENTS
+        result.push(lerp(lerp(entry, corner, t), lerp(corner, exit, t), t))
+      }
+    }
+    result.push([...points[points.length - 1]] as Waypoint)
+    return result
   }
 
   /**
