@@ -1,6 +1,57 @@
 # 0011 — `<circuit-diagram>` component (3D circuit / procedure viewer)
 
-**Status:** draft — design decisions resolved 2026-06-16, ready to spec out
+**Status:** in progress — core component implemented 2026-06-16 (commit `81239b7`,
+branch `3d-circuit-component`); docs + verification still outstanding (see
+Implementation progress below).
+
+## Implementation progress (2026-06-16)
+
+**Done and pushed:**
+
+- `src/components/CircuitDiagram/index.ts` — `CircuitDiagramElement`. Implements:
+  - Runway-centric coordinate frame and `_toWorld()` mapping (`x`, `alt × vertical-exaggeration`, `-y`).
+  - Terrain plane, faint distance grid, runway (surface, dashed centreline,
+    threshold bar, painted designator), larger-than-life windsock oriented to
+    `wind-from`.
+  - Paths from declarative `<circuit-path>` children **or** the `.paths` JS
+    property; Catmull-Rom smoothed ribbons via `_buildRibbonGeometry` (level
+    horizontal width, tilts with climb); colour + transparency via `parseColor`.
+  - Segment labels as billboarded `Sprite`s at segment midpoints (free text /
+    feet); clickable HTML legend toggling per-path visibility.
+  - `IntersectionObserver` / `ResizeObserver` lifecycle, `BroadcastChannel`
+    (`circuit-diagram-sync`) camera + path-toggle sync, full `_teardown()`.
+  - All attributes from the table below; `_rebuildScene()` on geometry-affecting
+    attribute changes.
+- `src/components/CircuitDiagram/index.css` — legend overlay, help link, loading.
+- `src/components/CircuitDiagram/INSTRUCTIONS.md` (+ `.claude/CLAUDE.md` symlink).
+- Registered in `src/define.ts` and `src/index.ts` (named export + `PathData`/`Waypoint` types).
+
+**Decisions settled during implementation:**
+
+- Label rendering: **`Sprite` + canvas texture** (no second render pass / DOM to
+  manage in teardown), not `CSS2DRenderer`.
+- Turn smoothing: `CatmullRomCurve3` (centripetal, tension 0.5), sampled by arc
+  length at ~15 m spacing. Tune if turns look wrong once rendered.
+
+**Still to do:**
+
+- **Verification** — typecheck/build/visual check have **not** been run: the dev
+  environment has no Node and no container runtime (Docker/podman absent, no
+  passwordless sudo). The component is unverified; sort out a local toolchain
+  (or run on another machine) before trusting it. Likely tuning once it renders:
+  ribbon overlap blending / `renderOrder`, vertical-exaggeration default,
+  windsock size/placement, label scale, designator orientation.
+- **Docs** (not started):
+  - `docs/components/CircuitDiagram.astro` — wrapper embedding the tag with the
+    worked example, `<script>` importing `'../../src/define'`.
+  - `docs/content/circuit-diagram.mdx` — page with a standard circuit + a
+    contrasting procedure (e.g. glide approach); show the ft↔m conversion.
+  - Sidebar entry in `astro.config.mjs`: `{ label: 'Circuit Diagram', slug: 'circuit-diagram' }`.
+- Publish as a new minor version alongside the existing components.
+
+---
+
+## Original design
 
 ## Goal
 
