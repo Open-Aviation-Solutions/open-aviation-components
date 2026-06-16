@@ -7,6 +7,7 @@ export { ClimbPerformanceElement } from './components/ClimbPerformance'
 export { BriefingOverviewElement } from './components/BriefingOverview'
 export { PitchRollYawElement } from './components/PitchRollYaw'
 export { AerofoilDynamicsElement } from './components/AerofoilDynamics'
+export { CircuitDiagramElement, type PathData, type Waypoint } from './components/CircuitDiagram'
 export {
   setEstimatedTimes,
   resetTimer,
