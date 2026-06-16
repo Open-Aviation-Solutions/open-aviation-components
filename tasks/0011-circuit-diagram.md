@@ -1,22 +1,28 @@
 # 0011 — `<circuit-diagram>` component (3D circuit / procedure viewer)
 
-**Status:** in progress — component + docs implemented and building 2026-06-16
-(branch `3d-circuit-component`). Typecheck and full build pass; a browser-based
-visual check of the rendered scene is still outstanding (see Implementation
-progress below).
+**Status:** in progress — component + docs implemented, building, and
+visually verified 2026-06-16 (branch `3d-circuit-component`). Typecheck and
+full build pass; the rendered scene has been checked in a headless browser and
+the example circuit geometry iterated on with the developer. Remaining work is
+aesthetic polish — chiefly replacing the green grid with a more realistic
+landscape (see **Still to do**).
 
 ## Implementation progress (2026-06-16)
 
 **Done and pushed:**
 
 - `src/components/CircuitDiagram/index.ts` — `CircuitDiagramElement`. Implements:
-  - Runway-centric coordinate frame and `_toWorld()` mapping (`x`, `alt × vertical-exaggeration`, `-y`).
+  - Runway-centric coordinate frame and `_toWorld()` mapping
+    (`x`, `alt × vertical-exaggeration`, `+y`). Looking down `+x`, Three.js puts
+    `+z` on the viewer's right, so `worldZ = +y` makes `+y` read as "right" and a
+    left-hand circuit (negative `y`) correctly appears on the left.
   - Terrain plane, faint distance grid, runway (surface, dashed centreline,
     threshold bar, painted designator), larger-than-life windsock oriented to
     `wind-from`.
   - Paths from declarative `<circuit-path>` children **or** the `.paths` JS
-    property; Catmull-Rom smoothed ribbons via `_buildRibbonGeometry` (level
-    horizontal width, tilts with climb); colour + transparency via `parseColor`.
+    property; tangent-fillet smoothed ribbons (`_smoothCorners` +
+    `_buildRibbonGeometry`; level horizontal width, tilts with climb); colour +
+    transparency via `parseColor`.
   - Segment labels as billboarded `Sprite`s at segment midpoints (free text /
     feet); clickable HTML legend toggling per-path visibility.
   - `IntersectionObserver` / `ResizeObserver` lifecycle, `BroadcastChannel`
@@ -31,8 +37,12 @@ progress below).
 
 - Label rendering: **`Sprite` + canvas texture** (no second render pass / DOM to
   manage in teardown), not `CSS2DRenderer`.
-- Turn smoothing: `CatmullRomCurve3` (centripetal, tension 0.5), sampled by arc
-  length at ~15 m spacing. Tune if turns look wrong once rendered.
+- Turn smoothing: **tangent fillets**, not `CatmullRomCurve3`. The Catmull-Rom
+  approach was tried first but distorted the straight legs (the whole shape
+  bowed). `_smoothCorners()` instead rounds only each interior waypoint with a
+  quadratic Bézier, cut back by `corner-radius` (default 100 m) and clamped to
+  half the shorter adjoining leg, leaving the legs dead straight. This keeps a
+  standard circuit a true rectangle in plan view.
 
 **Docs — done and pushed:**
 
@@ -66,6 +76,22 @@ produces a correct render — both ribbons, segment labels, legend, terrain/grid
 and windsock all show. So the WebGL scene is confirmed working, not just
 compiling.
 
+**Geometry refinements (2026-06-16, with the developer viewing the live dev
+server):**
+
+- Fixed the lateral axis sign so `+y` reads as "right" and the left-hand circuit
+  appears on the correct (left) side — see `_toWorld()` note above.
+- Replaced Catmull-Rom smoothing with tangent fillets (`corner-radius`
+  attribute, default 100 m) so the legs stay straight; verified the standard
+  circuit is a true rectangle (90° leg-to-leg) from a top-down camera.
+- Rebuilt the worked example: a take-off roll along the runway (lifts off
+  part-way down), a consistent ~13% climb gradient to circuit height, and a true
+  rectangular pattern (crosswind at `x=2000`, base at `x=-1500`, downwind at
+  `y=-1000`, upwind/final on the centreline).
+- Lowered the default `vertical-exaggeration` 4 → 3.
+- Added top-down (`CIRCUIT_VIEW=top`) and `corner-radius` (`CIRCUIT_CORNER`)
+  hooks to `scripts/screenshot.mjs` for tuning without rebuilding.
+
 **Tuning to consider (from the first render):**
 
 - At the default oblique camera the circuit spans ~3 km, so a 20 m ribbon reads
@@ -79,7 +105,30 @@ compiling.
 
 **Still to do:**
 
-- Apply the tuning above (needs a human aesthetic call).
+- **Replace the green grid with a more realistic landscape.** The stark green
+  ground plane + grid reads as a debug scene rather than an airfield. Give it
+  some surrounding terrain — gentle hills/mountains and a lake or two nearby —
+  so the circuit sits in a recognisable environment. Two avenues to weigh:
+  - **Source an OSS model/asset online** — a CC0 / permissively-licensed
+    low-poly terrain or landscape `.glb` (e.g. from Poly Haven, Kenney, Quaternius,
+    or similar). Pros: quick, good-looking. Cons: a fixed scene, an extra binary
+    asset to host (would live in `docs/public/` like a future aircraft model),
+    and the runway must be placed sensibly within it. Check the licence allows
+    redistribution and note it.
+  - **Generate procedurally** — synthesise a heightfield with a known algorithm
+    (Perlin/simplex/diamond-square fractal noise), colour it by elevation
+    (green → rock → snow) and carve flat water bodies below a threshold for
+    lakes. Pros: no external asset, parameterisable (seed, roughness), and the
+    airfield can sit on a guaranteed-flat clearing in the middle. Cons: more code
+    and tuning to avoid it looking noisy.
+    Recommendation: prototype the **procedural** route first — it keeps the
+    library asset-free and lets us keep a flat apron under the runway/circuit
+    while hills rise in the distance. Keep `show-grid` as a toggle (perhaps the
+    grid becomes an optional debug overlay), and make the landscape switchable so
+    embeds that want a clean diagram can opt out. Mind the scene scale: the
+    circuit spans ~3–4 km, so terrain features need to be sized to match.
+- Apply the earlier tuning items (ribbon width vs scene, runway emphasis) — a
+  human aesthetic call, partly subsumed by the landscape work above.
 - Publish as a new minor version alongside the existing components.
 
 ---
