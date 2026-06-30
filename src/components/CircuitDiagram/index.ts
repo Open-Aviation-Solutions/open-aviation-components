@@ -44,6 +44,8 @@ const FLIGHT_SPEED = 300
 /** Clamp the flight duration (ms) so very short/long tracks still read well. */
 const FLIGHT_MIN_MS = 9000
 const FLIGHT_MAX_MS = 45000
+/** Nominal airspeed (knots) used with `wind-speed` to compute the crab angle. */
+const DEFAULT_AIRSPEED = 90
 
 const PLAY_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2.5v11l9-5.5z"/></svg>'
 const PAUSE_ICON =
@@ -103,6 +105,10 @@ interface PlaybackState {
   startPos: THREE.Vector3
   startQuat: THREE.Quaternion
   up: THREE.Vector3
+  /** Unit horizontal direction the wind blows *toward*, in world space. */
+  windToward: THREE.Vector3
+  /** Wind speed / airspeed; `0` disables crab (camera faces straight along track). */
+  windRatio: number
 }
 
 /** Parse `#rrggbbaa` / `#rrggbb` / `rgba()` into a 24-bit colour + opacity. */
@@ -471,6 +477,29 @@ class CircuitDiagramElement extends HTMLElement {
     return Number.isFinite(value) ? value : this._runwayHeading
   }
 
+  /** Wind speed (any unit, paired with `airspeed`); `0` means no crab. */
+  private get _windSpeed(): number {
+    const value = parseFloat(this.getAttribute('wind-speed') ?? '')
+    return Number.isFinite(value) && value > 0 ? value : 0
+  }
+
+  /** Nominal airspeed (same unit as `wind-speed`) for the crab calculation. */
+  private get _airspeed(): number {
+    return this._numberAttr('airspeed', DEFAULT_AIRSPEED)
+  }
+
+  /**
+   * Unit horizontal vector for the direction the wind blows *toward*, in world
+   * space. Uses the verified bearing→world mapping: bearing `runwayHeading` is
+   * `+x`, and each degree clockwise rotates `(cos Δ, 0, sin Δ)` with
+   * `Δ = bearing − runwayHeading`.
+   */
+  private _worldWindToward(): THREE.Vector3 {
+    const THREE = this._THREE!
+    const delta = (this._windFrom + 180 - this._runwayHeading) * (Math.PI / 180)
+    return new THREE.Vector3(Math.cos(delta), 0, Math.sin(delta))
+  }
+
   /**
    * Map a data-frame waypoint to Three.js world coordinates.
    * worldX = along-runway distance, worldY = exaggerated altitude (up),
@@ -816,9 +845,12 @@ class CircuitDiagramElement extends HTMLElement {
     group.add(sock)
 
     // The sock flies downwind: bearing the wind blows toward = windFrom + 180.
-    // Rotate from +x (landing direction) by the bearing offset, about world up.
+    // Rotate from +x (landing direction) by the bearing offset about world up.
+    // The offset is negated because compass bearings increase clockwise while a
+    // positive rotation about +y is anticlockwise (looking down) — so +z reads as
+    // north and the sock points to the true downwind side.
     const windTo = this._windFrom + 180
-    group.rotation.y = (windTo - this._runwayHeading) * (Math.PI / 180)
+    group.rotation.y = -(windTo - this._runwayHeading) * (Math.PI / 180)
 
     // Place it beside the runway near the threshold.
     group.position.set(this._runwayLength * 0.08, 0, this._runwayWidth / 2 + 60)
@@ -1247,9 +1279,18 @@ class CircuitDiagramElement extends HTMLElement {
     }
     const totalLength = cumulative[cumulative.length - 1]
 
+    // Crab into wind: the camera flies the exact track but yaws toward the wind
+    // so the "nose" points off-track in a crosswind.
+    const windToward = this._worldWindToward()
+    const windRatio = this._airspeed > 0 ? this._windSpeed / this._airspeed : 0
+
     const startPos = positions[0].clone()
     const startQuat = new THREE.Quaternion().setFromRotationMatrix(
-      new THREE.Matrix4().lookAt(startPos, startPos.clone().add(tangents[0]), up)
+      new THREE.Matrix4().lookAt(
+        startPos,
+        startPos.clone().add(this._crabHeading(tangents[0], windToward, windRatio)),
+        up
+      )
     )
 
     const flyDuration = Math.min(
@@ -1275,6 +1316,8 @@ class CircuitDiagramElement extends HTMLElement {
       startPos,
       startQuat,
       up,
+      windToward,
+      windRatio,
     }
     this._updatePlayIcons()
     if (broadcast) this._broadcastChannel?.postMessage({ type: 'play-path', index })
@@ -1321,7 +1364,34 @@ class CircuitDiagramElement extends HTMLElement {
 
     camera.position.copy(position)
     camera.up.copy(playback.up)
-    camera.lookAt(position.clone().add(tangent))
+    camera.lookAt(position.clone().add(this._crabHeading(tangent, playback.windToward, playback.windRatio)))
+  }
+
+  /**
+   * Heading the camera should face: the track tangent yawed into wind by the
+   * wind-correction angle, keeping the same climb/descent pitch. With no wind
+   * (`windRatio === 0`) this is just the tangent.
+   */
+  private _crabHeading(tangent: THREE.Vector3, windToward: THREE.Vector3, windRatio: number): THREE.Vector3 {
+    const THREE = this._THREE!
+    if (windRatio <= 0) return tangent
+    const horizontal = new THREE.Vector3(tangent.x, 0, tangent.z)
+    const horizontalLength = horizontal.length()
+    if (horizontalLength < 1e-6) return tangent
+    horizontal.normalize()
+    // Unit vector to the aircraft's right (90° clockwise from the track).
+    const right = new THREE.Vector3(-horizontal.z, 0, horizontal.x)
+    // Rightward crosswind as a fraction of airspeed = sin(wind-correction angle).
+    const crosswind = Math.max(-1, Math.min(1, windToward.dot(right) * windRatio))
+    // Crab into wind: yaw left when the wind pushes right, and vice versa.
+    const yawRight = -Math.asin(crosswind)
+    const cos = Math.cos(yawRight)
+    const sin = Math.sin(yawRight)
+    return new THREE.Vector3(
+      (horizontal.x * cos + right.x * sin) * horizontalLength,
+      tangent.y,
+      (horizontal.z * cos + right.z * sin) * horizontalLength
+    )
   }
 
   /** Pause the flight in place, freeing the camera so the user can look around. */

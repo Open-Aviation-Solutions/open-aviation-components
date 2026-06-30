@@ -167,8 +167,34 @@ A "fly this track" control for guided tours, driven from the legend:
   camera ignored while flying, followed while paused).
 - A `CIRCUIT_VIEW=fly` hook was added to `scripts/screenshot.mjs` for inspection.
 
-Possible follow-ups (offered, not yet done): bank/roll into turns, and a chase
-(slightly-behind) camera option instead of directly overhead.
+Rejected follow-ups: bank/roll into turns (adds nothing for an instructional
+tool) and a chase camera (just an offset of the existing animation).
+
+**Crab into wind + windsock fix (2026-06-30, done):**
+
+- The flythrough camera now flies the exact ground track but yaws into wind by
+  the wind-correction angle (`_crabHeading()`), so the "nose" points off-track in
+  a crosswind. New attributes `wind-speed` (default `0` = no crab) and `airspeed`
+  (default `90`); `WCA = asin(clamp((windSpeed/airspeed) · crosswind_fraction))`,
+  computed per point from the local tangent so it's max on a pure crosswind leg
+  and zero on a pure head/tailwind leg. Pitch (climb/descent) is unchanged.
+- Fixed a pre-existing **windsock direction bug**: it rotated the opposite way to
+  the true wind (compass bearings increase clockwise, but +y rotation is
+  anticlockwise). Negated the windsock rotation; the crab derives from the same
+  verified bearing→world mapping (`_worldWindToward()`) so the two agree.
+- Verified in the headless render (temporary 30 kt northerly on rwy 27): take-off
+  crabs right into the wind (runway falls left), windsock points downwind.
+
+**Next steps (flagged for later):**
+
+- **Windsock should reflect wind *strength*, not just direction** — at present the
+  sock is a fixed size regardless of `wind-speed`. It should extend/stiffen (or
+  droop) with the wind speed used for the crab, so the visual matches the crab
+  magnitude.
+- **Camera airspeed should be constant, not ground speed** — the flight currently
+  advances at constant ground speed along the track (`FLIGHT_SPEED`). With wind it
+  should hold constant *airspeed*, so ground speed (and thus the along-track pace)
+  varies with the head/tailwind component — faster downwind, slower into wind.
 
 **Still to do:**
 
