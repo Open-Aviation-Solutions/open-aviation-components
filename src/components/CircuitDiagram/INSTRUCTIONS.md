@@ -78,10 +78,26 @@ but only ~300 m high and would otherwise look flat.
 - **Windsock** — larger-than-life cone on a pole, rotated about world up to the
   wind. Sock flies downwind: bearing `windFrom + 180`, offset from the runway
   heading. Default `wind-from` is the runway heading (into-wind landing).
-- **Legend** — HTML overlay (not WebGL); clicking a label toggles that path's
-  group visibility. Synced across tabs.
-- **BroadcastChannel** (`circuit-diagram-sync`) — syncs camera position and
-  per-path visibility toggles across tabs for presenter/slide pairing.
+- **Legend** — HTML overlay (not WebGL). Each entry has a colour-swatch/label
+  toggle button (toggles that path's group visibility) and a play/pause button
+  that flies the camera along the track (see below). Synced across tabs.
+- **Track flythrough** — the legend play button flies the camera along a track
+  for a guided tour. `_startPlayback()` builds the flight from the path's stored
+  world centreline raised `FLIGHT_HEIGHT_ABOVE_TRACK` above the ribbon: it eases
+  from the current view to the first point (`approach` phase), then moves at
+  `FLIGHT_SPEED` along the track always facing the local tangent (`fly` phase),
+  driven per-frame from `_loop()` via `_advancePlayback()`. The flight **loops**
+  continuously. The button toggles **pause/resume** (`_pausePlayback()` /
+  `_resumePlayback()`): pausing frees OrbitControls so you can look around and
+  resumes from the same spot (`pausedElapsed`); a pointer-down on the canvas also
+  pauses. Segment labels are lifted `LABEL_CLEARANCE_ABOVE_FLIGHT` above the
+  flight path so the camera passes underneath them. OrbitControls is disabled
+  while flying and re-enabled when paused/idle; `_cancelPlayback()` drops the
+  flight on rebuild/teardown.
+- **BroadcastChannel** (`circuit-diagram-sync`) — syncs camera position, per-path
+  visibility toggles, and flythrough play/pause/resume across tabs for
+  presenter/slide pairing (remote camera is ignored while actively flying, but
+  followed while paused).
 - **Lifecycle** — `IntersectionObserver` pauses/resumes the render loop
   off-screen; `ResizeObserver` keeps the renderer sized; `_teardown()` disposes
   all geometries, materials, textures, controls, and the renderer.

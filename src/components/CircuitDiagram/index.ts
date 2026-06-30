@@ -30,6 +30,24 @@ const DEFAULT_TERRAIN_SEED = 'open-aviation'
 const DEFAULT_TERRAIN_ROUGHNESS = 2
 /** Default sky / scene background colour. */
 const DEFAULT_SKY_COLOR = '#9ec9e8'
+
+// ---- track flythrough ("fly this track") ---------------------------------
+/** Camera height (world units) above the track while flying it. */
+const FLIGHT_HEIGHT_ABOVE_TRACK = 10
+/** Clearance (world units) from the flight path to the bottom of a segment label,
+ * so the flythrough camera passes underneath the labels. */
+const LABEL_CLEARANCE_ABOVE_FLIGHT = 10
+/** Duration (ms) of the eased move from the current view to the start pose. */
+const FLIGHT_APPROACH_MS = 1400
+/** Along-track speed (world units / second) during the flight. */
+const FLIGHT_SPEED = 300
+/** Clamp the flight duration (ms) so very short/long tracks still read well. */
+const FLIGHT_MIN_MS = 9000
+const FLIGHT_MAX_MS = 45000
+
+const PLAY_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2.5v11l9-5.5z"/></svg>'
+const PAUSE_ICON =
+  '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="4" y="3" width="3.2" height="10" rx="1"/><rect x="8.8" y="3" width="3.2" height="10" rx="1"/></svg>'
 /** Plane subdivisions per side for the terrain mesh (resolution vs. cost). */
 const TERRAIN_SEGMENTS = 160
 /** Horizontal feature size of the base terrain noise, in metres. */
@@ -56,7 +74,35 @@ interface PathObjects {
   ribbonGeometry: THREE.BufferGeometry
   ribbonMaterial: THREE.Material
   labelSprites: THREE.Sprite[]
+  /** Smoothed world-space centreline of the path, for the camera flythrough. */
+  centerline: THREE.Vector3[]
   visible: boolean
+}
+
+/** In-progress camera flight along a track. */
+interface PlaybackState {
+  index: number
+  /** Camera positions (track centreline raised above the ribbon). */
+  positions: THREE.Vector3[]
+  /** Unit tangents at each position (the local path direction, 3-D). */
+  tangents: THREE.Vector3[]
+  /** Cumulative arc length up to each position. */
+  cumulative: number[]
+  totalLength: number
+  phase: 'approach' | 'fly'
+  phaseStart: number
+  approachDuration: number
+  flyDuration: number
+  paused: boolean
+  /** Phase-elapsed time (ms) captured at the moment of pausing, for resume. */
+  pausedElapsed: number
+  /** Camera pose when the flight was triggered (for the eased approach). */
+  fromPos: THREE.Vector3
+  fromQuat: THREE.Quaternion
+  /** Pose at the first track point. */
+  startPos: THREE.Vector3
+  startQuat: THREE.Quaternion
+  up: THREE.Vector3
 }
 
 /** Parse `#rrggbbaa` / `#rrggbb` / `rgba()` into a 24-bit colour + opacity. */
@@ -259,9 +305,11 @@ class CircuitDiagramElement extends HTMLElement {
   private _sceneReady = false
   private _visible = true
   private _applyingRemoteCamera = false
+  private _playback: PlaybackState | null = null
 
   // Bound references
   private _boundLoop!: () => void
+  private _boundPauseOnInteract!: () => void
 
   constructor() {
     super()
@@ -297,6 +345,11 @@ class CircuitDiagramElement extends HTMLElement {
     shadow.appendChild(root)
 
     this._boundLoop = this._loop.bind(this)
+    this._boundPauseOnInteract = () => {
+      // A pointer press on the canvas pauses a flight so the user can look
+      // around (and resume from the same spot afterwards).
+      if (this._playback && !this._playback.paused) this._pausePlayback(true)
+    }
   }
 
   connectedCallback() {
@@ -472,6 +525,7 @@ class CircuitDiagramElement extends HTMLElement {
     this._renderer.setSize(width, height)
     this._renderer.outputColorSpace = THREE.SRGBColorSpace
     container.prepend(this._renderer.domElement)
+    this._renderer.domElement.addEventListener('pointerdown', this._boundPauseOnInteract)
 
     this._scene = new THREE.Scene()
     this._applySkyColor()
@@ -514,7 +568,10 @@ class CircuitDiagramElement extends HTMLElement {
     this._broadcastChannel = new BroadcastChannel(BROADCAST_CHANNEL)
     this._broadcastChannel.onmessage = ({ data }) => {
       if (data.type === 'camera') {
+        // Ignore remote camera while actively flying, but follow it when paused
+        // (so paired views can look around together).
         if (!this._camera || !this._orbitControls) return
+        if (this._playback && !this._playback.paused) return
         this._applyingRemoteCamera = true
         this._camera.position.fromArray(data.position)
         this._orbitControls.target.fromArray(data.target)
@@ -522,6 +579,12 @@ class CircuitDiagramElement extends HTMLElement {
         this._applyingRemoteCamera = false
       } else if (data.type === 'toggle-path') {
         this._setPathVisible(data.index, data.visible, false)
+      } else if (data.type === 'play-path') {
+        this._startPlayback(data.index, false)
+      } else if (data.type === 'pause-path') {
+        this._pausePlayback(false)
+      } else if (data.type === 'resume-path') {
+        this._resumePlayback(false)
       }
     }
 
@@ -824,13 +887,15 @@ class CircuitDiagramElement extends HTMLElement {
       const midpoint = start.clone().add(end).multiplyScalar(0.5)
       const sprite = this._makeLabelSprite(THREE, text, path.color, labelHeight)
       sprite.position.copy(midpoint)
-      sprite.position.y += labelHeight * 0.6
+      // Lift the label so its bottom edge sits clear above the flight path; the
+      // flythrough camera (FLIGHT_HEIGHT_ABOVE_TRACK above the ribbon) passes under.
+      sprite.position.y += FLIGHT_HEIGHT_ABOVE_TRACK + LABEL_CLEARANCE_ABOVE_FLIGHT + labelHeight / 2
       group.add(sprite)
       labelSprites.push(sprite)
     }
 
     this._scene!.add(group)
-    return { group, ribbonGeometry, ribbonMaterial, labelSprites, visible: true }
+    return { group, ribbonGeometry, ribbonMaterial, labelSprites, centerline: sampled, visible: true }
   }
 
   /**
@@ -1072,10 +1137,13 @@ class CircuitDiagramElement extends HTMLElement {
     this._legendEl.style.display = ''
     this._legendEl.replaceChildren()
     paths.forEach((path, index) => {
-      const item = document.createElement('button')
+      const item = document.createElement('div')
       item.className = 'cd-legend-item'
-      item.type = 'button'
       if (!(this._pathObjects[index]?.visible ?? true)) item.classList.add('cd-legend-off')
+
+      const toggle = document.createElement('button')
+      toggle.className = 'cd-legend-toggle'
+      toggle.type = 'button'
 
       const swatch = document.createElement('span')
       swatch.className = 'cd-legend-swatch'
@@ -1085,12 +1153,42 @@ class CircuitDiagramElement extends HTMLElement {
       label.className = 'cd-legend-label'
       label.textContent = path.label || `Path ${index + 1}`
 
-      item.append(swatch, label)
-      item.addEventListener('click', () => {
+      toggle.append(swatch, label)
+      toggle.addEventListener('click', () => {
         const nextVisible = !(this._pathObjects[index]?.visible ?? true)
         this._setPathVisible(index, nextVisible, true)
       })
+
+      const play = document.createElement('button')
+      play.className = 'cd-legend-play'
+      play.type = 'button'
+      play.title = 'Fly this track'
+      play.innerHTML = PLAY_ICON
+      play.addEventListener('click', () => {
+        const playback = this._playback
+        if (playback?.index === index) {
+          if (playback.paused) this._resumePlayback(true)
+          else this._pausePlayback(true)
+        } else {
+          this._startPlayback(index, true)
+        }
+      })
+
+      item.append(toggle, play)
       this._legendEl.appendChild(item)
+    })
+    this._updatePlayIcons()
+  }
+
+  /** Reflect the current playback state in the legend play/pause icons. */
+  private _updatePlayIcons() {
+    const buttons = this._legendEl.querySelectorAll<HTMLButtonElement>('.cd-legend-play')
+    buttons.forEach((button, index) => {
+      const active = this._playback?.index === index
+      const flying = active && !this._playback!.paused
+      button.innerHTML = flying ? PAUSE_ICON : PLAY_ICON
+      button.classList.toggle('cd-playing', active)
+      button.title = flying ? 'Pause flight' : active ? 'Resume flight' : 'Fly this track'
     })
   }
 
@@ -1115,10 +1213,159 @@ class CircuitDiagramElement extends HTMLElement {
     this._scene.background = new this._THREE.Color(hex)
   }
 
+  // ---- track flythrough --------------------------------------------------
+
+  /**
+   * Fly the camera along a track: ease from the current view to just above the
+   * first point (facing along the path), then move slowly along the track,
+   * always facing the local path direction. Driven each frame from `_loop()`.
+   */
+  private _startPlayback(index: number, broadcast: boolean) {
+    const THREE = this._THREE
+    const objects = this._pathObjects[index]
+    if (!THREE || !this._camera || !this._orbitControls) return
+    if (!objects || objects.centerline.length < 2) return
+
+    // Flying a hidden track is confusing — show it first.
+    if (!objects.visible) this._setPathVisible(index, true, broadcast)
+
+    const up = new THREE.Vector3(0, 1, 0)
+    const lift = new THREE.Vector3(0, FLIGHT_HEIGHT_ABOVE_TRACK, 0)
+    const positions = objects.centerline.map(point => point.clone().add(lift))
+
+    const tangents = positions.map((_, pointIndex) => {
+      const previous = positions[Math.max(pointIndex - 1, 0)]
+      const next = positions[Math.min(pointIndex + 1, positions.length - 1)]
+      const tangent = next.clone().sub(previous)
+      if (tangent.lengthSq() < 1e-9) tangent.set(1, 0, 0)
+      return tangent.normalize()
+    })
+
+    const cumulative = [0]
+    for (let pointIndex = 1; pointIndex < positions.length; pointIndex++) {
+      cumulative.push(cumulative[pointIndex - 1] + positions[pointIndex].distanceTo(positions[pointIndex - 1]))
+    }
+    const totalLength = cumulative[cumulative.length - 1]
+
+    const startPos = positions[0].clone()
+    const startQuat = new THREE.Quaternion().setFromRotationMatrix(
+      new THREE.Matrix4().lookAt(startPos, startPos.clone().add(tangents[0]), up)
+    )
+
+    const flyDuration = Math.min(
+      FLIGHT_MAX_MS,
+      Math.max(FLIGHT_MIN_MS, (totalLength / FLIGHT_SPEED) * 1000)
+    )
+
+    this._orbitControls.enabled = false
+    this._playback = {
+      index,
+      positions,
+      tangents,
+      cumulative,
+      totalLength,
+      phase: 'approach',
+      phaseStart: performance.now(),
+      approachDuration: FLIGHT_APPROACH_MS,
+      flyDuration,
+      paused: false,
+      pausedElapsed: 0,
+      fromPos: this._camera.position.clone(),
+      fromQuat: this._camera.quaternion.clone(),
+      startPos,
+      startQuat,
+      up,
+    }
+    this._updatePlayIcons()
+    if (broadcast) this._broadcastChannel?.postMessage({ type: 'play-path', index })
+  }
+
+  /** Advance the active flight; called once per frame while playing. */
+  private _advancePlayback(now: number) {
+    const playback = this._playback
+    if (!playback || !this._camera) return
+
+    if (playback.phase === 'approach') {
+      const t = Math.min(1, (now - playback.phaseStart) / playback.approachDuration)
+      const eased = t * t * (3 - 2 * t)
+      this._camera.position.lerpVectors(playback.fromPos, playback.startPos, eased)
+      this._camera.quaternion.copy(playback.fromQuat).slerp(playback.startQuat, eased)
+      if (t >= 1) {
+        playback.phase = 'fly'
+        playback.phaseStart = now
+      }
+      return
+    }
+
+    // Loop continuously: wrap the elapsed fraction so the flight repeats until
+    // the user pauses it.
+    const t = (now - playback.phaseStart) / playback.flyDuration
+    const loopFraction = t - Math.floor(t)
+    this._positionAlong(playback, loopFraction * playback.totalLength)
+  }
+
+  /** Place + orient the camera at a given arc-length distance along the track. */
+  private _positionAlong(playback: PlaybackState, distance: number) {
+    const camera = this._camera!
+    const cumulative = playback.cumulative
+    let segment = 0
+    while (segment < cumulative.length - 2 && cumulative[segment + 1] < distance) segment++
+
+    const segmentLength = cumulative[segment + 1] - cumulative[segment] || 1
+    const fraction = Math.min(1, Math.max(0, (distance - cumulative[segment]) / segmentLength))
+
+    const position = playback.positions[segment].clone().lerp(playback.positions[segment + 1], fraction)
+    const tangent = playback.tangents[segment].clone().lerp(playback.tangents[segment + 1], fraction)
+    if (tangent.lengthSq() < 1e-9) tangent.copy(playback.tangents[segment])
+    tangent.normalize()
+
+    camera.position.copy(position)
+    camera.up.copy(playback.up)
+    camera.lookAt(position.clone().add(tangent))
+  }
+
+  /** Pause the flight in place, freeing the camera so the user can look around. */
+  private _pausePlayback(broadcast: boolean) {
+    const playback = this._playback
+    if (!playback || playback.paused) return
+    playback.paused = true
+    playback.pausedElapsed = performance.now() - playback.phaseStart
+
+    if (this._orbitControls && this._camera) {
+      // Pivot the orbit target ahead of the camera so a look-around feels natural.
+      const THREE = this._THREE!
+      const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(this._camera.quaternion)
+      this._orbitControls.target.copy(this._camera.position).add(forward.multiplyScalar(800))
+      this._orbitControls.enabled = true
+    }
+    this._updatePlayIcons()
+    if (broadcast) this._broadcastChannel?.postMessage({ type: 'pause-path', index: playback.index })
+  }
+
+  /** Resume a paused flight from where it stopped, snapping back onto the track. */
+  private _resumePlayback(broadcast: boolean) {
+    const playback = this._playback
+    if (!playback || !playback.paused) return
+    playback.paused = false
+    playback.phaseStart = performance.now() - playback.pausedElapsed
+    if (this._orbitControls) this._orbitControls.enabled = false
+    this._updatePlayIcons()
+    if (broadcast) this._broadcastChannel?.postMessage({ type: 'resume-path', index: playback.index })
+  }
+
+  /** Abandon any flight without the camera hand-off (used on rebuild/teardown). */
+  private _cancelPlayback() {
+    if (!this._playback) return
+    this._playback = null
+    if (this._orbitControls) this._orbitControls.enabled = true
+    this._updatePlayIcons()
+  }
+
   // ---- rebuild on attribute change --------------------------------------
 
   private _rebuildScene() {
     if (!this._THREE || !this._scene) return
+    this._cancelPlayback() // path objects are about to be replaced
     this._disposeSceneContents()
     this._buildSceneContents()
     this._frameCamera()
@@ -1164,13 +1411,20 @@ class CircuitDiagramElement extends HTMLElement {
 
   private _loop() {
     this._animFrameId = requestAnimationFrame(this._boundLoop)
-    this._orbitControls!.update()
+    if (this._playback && !this._playback.paused) {
+      this._advancePlayback(performance.now())
+    } else {
+      // Free orbit when idle, or look-around while a flight is paused.
+      this._orbitControls!.update()
+    }
     this._renderer!.render(this._scene!, this._camera!)
   }
 
   private _teardown() {
     if (this._animFrameId) cancelAnimationFrame(this._animFrameId)
     if (this._resizeObserver) this._resizeObserver.disconnect()
+    this._playback = null
+    this._renderer?.domElement.removeEventListener('pointerdown', this._boundPauseOnInteract)
     this._disposeSceneContents()
     if (this._orbitControls) this._orbitControls.dispose()
     if (this._renderer) {

@@ -103,7 +103,18 @@ try {
       await page.waitForTimeout(600)
     }
 
-    const viewSuffix = topDown ? '-top' : runwayView ? '-runway' : ''
+    // Optional flythrough capture: trigger the first track's "fly" animation
+    // and wait past the approach so the frame shows the in-flight camera.
+    const flyView = process.env.CIRCUIT_VIEW === 'fly'
+    if (flyView) {
+      await page.evaluate((selector) => {
+        const host = document.querySelector(selector)
+        host?._startPlayback?.(0, false)
+      }, target.selector)
+      await page.waitForTimeout(4000)
+    }
+
+    const viewSuffix = topDown ? '-top' : runwayView ? '-runway' : flyView ? '-fly' : ''
     const file = viewSuffix ? target.file.replace('.png', `${viewSuffix}.png`) : target.file
     const outputPath = new URL(file, outputDir).pathname
     await page.locator(target.selector).screenshot({ path: outputPath })

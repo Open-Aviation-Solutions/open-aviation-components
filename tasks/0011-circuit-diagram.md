@@ -146,6 +146,30 @@ Possible follow-ups: slope-based colouring (cliffs/scree), softening the plane
 edges where terrain meets the background, optional tree/feature scatter, and a
 human aesthetic pass on amplitudes/water level.
 
+**Track flythrough (2026-06-30, done):**
+
+A "fly this track" control for guided tours, driven from the legend:
+
+- Each legend entry gained a play/pause button beside the visibility toggle.
+  Clicking play flies the camera along that track: an eased `approach` from the
+  current view to just above the first point, then a slow `fly` along the
+  centreline always facing the local tangent (so it pitches with the climb /
+  descent). Driven per-frame from `_loop()`.
+- The flight **loops**; the button toggles **pause/resume**. Pausing frees the
+  OrbitControls so you can look around and discuss, then resume continues from
+  the same spot — the intended "chat about parts of the circuit" workflow. A
+  pointer-down on the canvas also pauses.
+- Camera flies `FLIGHT_HEIGHT_ABOVE_TRACK` (10) above the ribbon so the track
+  stays in view; segment labels are lifted `LABEL_CLEARANCE_ABOVE_FLIGHT` clear
+  of the flight path so the camera passes underneath them. Speed/clamps are
+  `FLIGHT_SPEED` / `FLIGHT_MIN_MS` / `FLIGHT_MAX_MS`.
+- Synced across tabs over `BroadcastChannel` (play / pause / resume; remote
+  camera ignored while flying, followed while paused).
+- A `CIRCUIT_VIEW=fly` hook was added to `scripts/screenshot.mjs` for inspection.
+
+Possible follow-ups (offered, not yet done): bank/roll into turns, and a chase
+(slightly-behind) camera option instead of directly overhead.
+
 **Still to do:**
 
 - Apply the earlier tuning items (ribbon width vs scene, runway emphasis) — a
