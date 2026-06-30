@@ -54,6 +54,19 @@ but only ~300 m high and would otherwise look flat.
   runs from waypoint `index` to `index+1`. Rendered as billboarded `Sprite`s
   (canvas texture) at the segment midpoint. Free text, so altitudes can be
   written in feet without any unit conversion in the geometry.
+- **Terrain** — `show-terrain` (default on) builds a procedural landscape: a
+  subdivided plane displaced by seeded fractal value noise (`fbm` over `hashCell`
+  value noise; `hashSeed` turns the `terrain-seed` string into a 32-bit seed).
+  Generation is fully deterministic — the **same seed always yields the same
+  landscape** (no `Math.random`), which also keeps presenter/slide pairs in sync.
+  A flat clearing is held under the airfield (`_fieldClearing()` sizes it from the
+  runway + path waypoints); hills stay gentle near the field and grow into
+  mountains with distance; vertices below `TERRAIN_WATER_LEVEL` are flattened into
+  lakes. Vertices are coloured by elevation (`TERRAIN_RAMP`: water → grass → rock
+  → snow) via a vertex-colour `MeshLambertMaterial`. `terrain-roughness` scales
+  the amplitude. `show-terrain="false"` falls back to a plain flat green plane for
+  a clean diagram. The faint distance grid is now opt-in debug (`show-grid`,
+  default off).
 - **Runway markings** — both thresholds carry "piano keys" (longitudinal white
   stripes across the width) and a designator number. The `x = 0` end shows the
   named runway (read by a pilot landing toward `+x`); the far end shows its
@@ -92,6 +105,9 @@ optional `segment-labels`.
 | `wind-from` | runway heading | Direction in degrees the wind blows *from*; orients the windsock |
 | `show-windsock` | `true` | Show the larger-than-life windsock (`false` hides) |
 | `show-curtains` | `true` | Show the vertical curtain under each path centreline (`false` hides) |
-| `show-grid` | `true` | Show the faint ground distance grid (`false` hides) |
+| `show-terrain` | `true` | Generate the procedural landscape (`false` = plain flat green plane) |
+| `terrain-seed` | `open-aviation` | Seed string for the landscape; the same seed always produces the same terrain |
+| `terrain-roughness` | `1` | Multiplier on terrain height/amplitude |
+| `show-grid` | `false` | Show the faint ground distance grid (debug overlay; `true` shows) |
 | `show-legend` | `true` | Show the clickable legend overlay (`false` hides) |
 | `show-help` | — | Set to `false` to hide the in-component help (?) link |

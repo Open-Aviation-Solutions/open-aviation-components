@@ -122,30 +122,32 @@ server):**
 - Re-check ribbon overlap blending / `renderOrder` and windsock size/placement
   once the above are decided.
 
+**Procedural landscape (2026-06-30, done — first prototype):**
+
+Took the recommended **procedural** route (asset-free, deterministic). Added a
+seeded fractal-noise terrain in place of the bare green plane:
+
+- Seeded value noise (`hashSeed` → `hashCell` → `valueNoise` → `fbm`, octaves
+  rotated to break up axis alignment). Fully deterministic — the same
+  `terrain-seed` always produces the same landscape (no `Math.random`), which
+  also keeps presenter/slide pairs in sync.
+- A flat clearing is held under the airfield (`_fieldClearing()` sizes it from
+  the runway + path waypoints), hills stay gentle near the field and grow into
+  mountains with distance, and vertices below `TERRAIN_WATER_LEVEL` flatten into
+  lakes. Elevation colour ramp (`TERRAIN_RAMP`: water → grass → rock → snow) via
+  vertex colours; `computeVertexNormals()` for lit relief.
+- New attributes: `show-terrain` (default on; `false` = clean flat plane),
+  `terrain-seed`, `terrain-roughness`. The distance grid is now opt-in debug
+  (`show-grid` default flipped to off).
+- Verified in the headless render: circuit sits on the flat clearing with
+  snow-capped mountains and a lake in the distance.
+
+Possible follow-ups: slope-based colouring (cliffs/scree), softening the plane
+edges where terrain meets the background, optional tree/feature scatter, and a
+human aesthetic pass on amplitudes/water level.
+
 **Still to do:**
 
-- **Replace the green grid with a more realistic landscape.** The stark green
-  ground plane + grid reads as a debug scene rather than an airfield. Give it
-  some surrounding terrain — gentle hills/mountains and a lake or two nearby —
-  so the circuit sits in a recognisable environment. Two avenues to weigh:
-  - **Source an OSS model/asset online** — a CC0 / permissively-licensed
-    low-poly terrain or landscape `.glb` (e.g. from Poly Haven, Kenney, Quaternius,
-    or similar). Pros: quick, good-looking. Cons: a fixed scene, an extra binary
-    asset to host (would live in `docs/public/` like a future aircraft model),
-    and the runway must be placed sensibly within it. Check the licence allows
-    redistribution and note it.
-  - **Generate procedurally** — synthesise a heightfield with a known algorithm
-    (Perlin/simplex/diamond-square fractal noise), colour it by elevation
-    (green → rock → snow) and carve flat water bodies below a threshold for
-    lakes. Pros: no external asset, parameterisable (seed, roughness), and the
-    airfield can sit on a guaranteed-flat clearing in the middle. Cons: more code
-    and tuning to avoid it looking noisy.
-    Recommendation: prototype the **procedural** route first — it keeps the
-    library asset-free and lets us keep a flat apron under the runway/circuit
-    while hills rise in the distance. Keep `show-grid` as a toggle (perhaps the
-    grid becomes an optional debug overlay), and make the landscape switchable so
-    embeds that want a clean diagram can opt out. Mind the scene scale: the
-    circuit spans ~3–4 km, so terrain features need to be sized to match.
 - Apply the earlier tuning items (ribbon width vs scene, runway emphasis) — a
   human aesthetic call, partly subsumed by the landscape work above.
 - Publish as a new minor version alongside the existing components.
