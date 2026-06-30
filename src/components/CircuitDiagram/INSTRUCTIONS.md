@@ -67,6 +67,8 @@ but only ~300 m high and would otherwise look flat.
   the amplitude. `show-terrain="false"` falls back to a plain flat green plane for
   a clean diagram. The faint distance grid is now opt-in debug (`show-grid`,
   default off).
+- **Sky** — `scene.background` is set to `sky-color` (default sky blue) via
+  `_applySkyColor()`; updating the attribute recolours the sky without a rebuild.
 - **Runway markings** — both thresholds carry "piano keys" (longitudinal white
   stripes across the width) and a designator number. The `x = 0` end shows the
   named runway (read by a pilot landing toward `+x`); the far end shows its
@@ -107,7 +109,8 @@ optional `segment-labels`.
 | `show-curtains` | `true` | Show the vertical curtain under each path centreline (`false` hides) |
 | `show-terrain` | `true` | Generate the procedural landscape (`false` = plain flat green plane) |
 | `terrain-seed` | `open-aviation` | Seed string for the landscape; the same seed always produces the same terrain |
-| `terrain-roughness` | `1` | Multiplier on terrain height/amplitude |
+| `terrain-roughness` | `2` | Multiplier on terrain height/amplitude |
+| `sky-color` | `#9ec9e8` | Scene background (sky) colour |
 | `show-grid` | `false` | Show the faint ground distance grid (debug overlay; `true` shows) |
 | `show-legend` | `true` | Show the clickable legend overlay (`false` hides) |
 | `show-help` | — | Set to `false` to hide the in-component help (?) link |

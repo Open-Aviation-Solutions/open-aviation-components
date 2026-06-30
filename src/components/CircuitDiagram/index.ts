@@ -26,6 +26,10 @@ const CORNER_SEGMENTS = 10
 
 /** Default seed for the procedural landscape (any string; same seed → same terrain). */
 const DEFAULT_TERRAIN_SEED = 'open-aviation'
+/** Default terrain height multiplier. */
+const DEFAULT_TERRAIN_ROUGHNESS = 2
+/** Default sky / scene background colour. */
+const DEFAULT_SKY_COLOR = '#9ec9e8'
 /** Plane subdivisions per side for the terrain mesh (resolution vs. cost). */
 const TERRAIN_SEGMENTS = 160
 /** Horizontal feature size of the base terrain noise, in metres. */
@@ -219,6 +223,7 @@ class CircuitDiagramElement extends HTMLElement {
     'show-terrain',
     'terrain-seed',
     'terrain-roughness',
+    'sky-color',
     'show-legend',
     'show-help',
   ]
@@ -331,6 +336,8 @@ class CircuitDiagramElement extends HTMLElement {
       this._renderLegend()
     } else if (name === 'show-grid') {
       this._applyGridVisibility()
+    } else if (name === 'sky-color') {
+      this._applySkyColor()
     } else {
       // runway / dimensions / exaggeration / path-width / wind-from all change
       // geometry — rebuild the scene contents and reframe the camera.
@@ -467,6 +474,7 @@ class CircuitDiagramElement extends HTMLElement {
     container.prepend(this._renderer.domElement)
 
     this._scene = new THREE.Scene()
+    this._applySkyColor()
 
     this._camera = new THREE.PerspectiveCamera(50, width / height, 1, 50000)
 
@@ -584,7 +592,7 @@ class CircuitDiagramElement extends HTMLElement {
     geometry.rotateX(-Math.PI / 2) // lie flat: vertices now span world X/Z, normal +y
 
     const seed = hashSeed(this.getAttribute('terrain-seed') || DEFAULT_TERRAIN_SEED)
-    const roughness = this._numberAttr('terrain-roughness', 1)
+    const roughness = this._numberAttr('terrain-roughness', DEFAULT_TERRAIN_ROUGHNESS)
     const { centerX, centerZ, radius } = this._fieldClearing()
 
     // Flat clearing out to innerRadius, ramping to full terrain by outerRadius;
@@ -1098,6 +1106,13 @@ class CircuitDiagramElement extends HTMLElement {
 
   private _applyGridVisibility() {
     if (this._gridHelper) this._gridHelper.visible = this.getAttribute('show-grid') === 'true'
+  }
+
+  /** Set the scene background to the configured sky colour. */
+  private _applySkyColor() {
+    if (!this._THREE || !this._scene) return
+    const { hex } = parseColor(this.getAttribute('sky-color') || DEFAULT_SKY_COLOR)
+    this._scene.background = new this._THREE.Color(hex)
   }
 
   // ---- rebuild on attribute change --------------------------------------
