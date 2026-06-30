@@ -84,7 +84,27 @@ try {
       await page.waitForTimeout(600)
     }
 
-    const file = topDown ? target.file.replace('.png', '-top.png') : target.file
+    // Optional close-up of the landing threshold (x = 0), viewed from behind it
+    // looking down the runway, to check the threshold markings and that the
+    // designator reads upright to a pilot standing there.
+    const runwayView = process.env.CIRCUIT_VIEW === 'runway'
+    if (runwayView) {
+      await page.evaluate((selector) => {
+        const host = document.querySelector(selector)
+        const camera = host?._camera
+        const controls = host?._orbitControls
+        if (!camera || !controls) return
+        controls.enableDamping = false
+        camera.up.set(0, 1, 0)
+        camera.position.set(-450, 650, 700)
+        controls.target.set(450, 0, 0)
+        controls.update()
+      }, target.selector)
+      await page.waitForTimeout(600)
+    }
+
+    const viewSuffix = topDown ? '-top' : runwayView ? '-runway' : ''
+    const file = viewSuffix ? target.file.replace('.png', `${viewSuffix}.png`) : target.file
     const outputPath = new URL(file, outputDir).pathname
     await page.locator(target.selector).screenshot({ path: outputPath })
     console.log(`captured ${file}`)

@@ -42,12 +42,24 @@ but only ~300 m high and would otherwise look flat.
   the climb gradient. Material is `MeshBasicMaterial` with `transparent`,
   `depthWrite: false`, `side: DoubleSide` so overlapping translucent ribbons
   blend.
+- **Ground curtain** — `_buildCurtainGeometry()` builds a vertical sheet hanging
+  from the path centreline straight down to the ground (`y = 0`) below each
+  sampled point, so the track's height above the field reads at a glance. Same
+  colour as the ribbon at a fraction of its opacity (`CURTAIN_OPACITY_FACTOR`),
+  `depthWrite: false`. Lives in the path's group, so it toggles and disposes with
+  the path. Gated by `show-curtains`.
 - **Colour + transparency** — `parseColor()` accepts `#rrggbbaa`, `#rrggbb`, or
   `rgba(...)`; transparency is carried in the colour itself.
 - **Segment labels** — `segment-labels="index:text; …"`, where segment `index`
   runs from waypoint `index` to `index+1`. Rendered as billboarded `Sprite`s
   (canvas texture) at the segment midpoint. Free text, so altitudes can be
   written in feet without any unit conversion in the geometry.
+- **Runway markings** — both thresholds carry "piano keys" (longitudinal white
+  stripes across the width) and a designator number. The `x = 0` end shows the
+  named runway (read by a pilot landing toward `+x`); the far end shows its
+  reciprocal (`27` → `09`, with `L`/`R` swapped). Each number is rotated so the
+  top of the digits points down the runway, i.e. it reads upright to a pilot
+  standing at that threshold. The designator is sized to sit within the pavement.
 - **Windsock** — larger-than-life cone on a pole, rotated about world up to the
   wind. Sock flies downwind: bearing `windFrom + 180`, offset from the runway
   heading. Default `wind-from` is the runway heading (into-wind landing).
@@ -73,12 +85,13 @@ optional `segment-labels`.
 | `height` | `480px` | CSS height of the host element |
 | `runway` | `27` | Runway designator (drives the painted number and the runway heading) |
 | `runway-length` | `1500` | Runway length in metres |
-| `runway-width` | `30` | Runway width in metres |
+| `runway-width` | `90` | Runway width in metres (kept wider than `path-width` so the runway reads as the landing surface; not to scale) |
 | `vertical-exaggeration` | `3` | Multiplier applied to altitude for display |
-| `path-width` | `20` | Ribbon width in metres (narrower than the runway) |
+| `path-width` | `60` | Ribbon width in metres (tweak via the attribute, or the `DEFAULT_PATH_WIDTH` constant for a new baseline) |
 | `corner-radius` | `100` | Corner fillet radius in metres (`0` = sharp corners) |
 | `wind-from` | runway heading | Direction in degrees the wind blows *from*; orients the windsock |
 | `show-windsock` | `true` | Show the larger-than-life windsock (`false` hides) |
+| `show-curtains` | `true` | Show the vertical curtain under each path centreline (`false` hides) |
 | `show-grid` | `true` | Show the faint ground distance grid (`false` hides) |
 | `show-legend` | `true` | Show the clickable legend overlay (`false` hides) |
 | `show-help` | — | Set to `false` to hide the in-component help (?) link |

@@ -16,10 +16,12 @@ const BROADCAST_CHANNEL = 'circuit-diagram-sync'
 
 const DEFAULT_RUNWAY = '27'
 const DEFAULT_RUNWAY_LENGTH = 1500
-const DEFAULT_RUNWAY_WIDTH = 30
+const DEFAULT_RUNWAY_WIDTH = 90
 const DEFAULT_VERTICAL_EXAGGERATION = 3
-const DEFAULT_PATH_WIDTH = 20
+const DEFAULT_PATH_WIDTH = 60
 const DEFAULT_CORNER_RADIUS = 100
+/** Opacity of a path's ground curtain relative to the ribbon's own opacity. */
+const CURTAIN_OPACITY_FACTOR = 0.3
 const CORNER_SEGMENTS = 10
 
 /** A single waypoint, in the runway-centric data frame (metres). */
@@ -102,6 +104,7 @@ class CircuitDiagramElement extends HTMLElement {
     'corner-radius',
     'wind-from',
     'show-windsock',
+    'show-curtains',
     'show-grid',
     'show-legend',
     'show-help',
@@ -473,24 +476,58 @@ class CircuitDiagramElement extends HTMLElement {
       group.add(dash)
     }
 
-    // Threshold bar at the landing end.
-    const thresholdBar = new THREE.Mesh(new THREE.PlaneGeometry(width * 0.06, width * 0.9), centrelineMaterial)
-    thresholdBar.rotation.x = -Math.PI / 2
-    thresholdBar.position.set(width * 0.12, 0.1, 0)
-    group.add(thresholdBar)
+    // Threshold markings at both ends: "piano keys" (longitudinal white bars
+    // across the width) followed, further in, by the runway designator. The
+    // x = 0 end carries the named runway (landing toward +x); the far end
+    // carries its reciprocal (landing toward -x).
+    const designatorSize = Math.min(width * 0.9, length * 0.12)
+    const keyInset = length * 0.015
+    const keyLength = Math.min(length * 0.05, 80)
+    const numberGap = length * 0.02
 
-    // Runway designator painted on the surface near the threshold.
-    const designatorTexture = this._makeTextTexture(THREE, this._runwayDesignator, '#ffffff', null)
-    const designatorSize = Math.min(width * 1.4, length * 0.12)
-    const designator = new THREE.Mesh(
-      new THREE.PlaneGeometry(designatorSize, designatorSize),
-      new THREE.MeshBasicMaterial({ map: designatorTexture, transparent: true })
-    )
-    designator.rotation.x = -Math.PI / 2
-    // Read facing the approach (text top toward the rollout / +x).
-    designator.rotation.z = Math.PI / 2
-    designator.position.set(length * 0.1, 0.12, 0)
-    group.add(designator)
+    const parsed = this._runwayDesignator.match(/^\s*(\d{1,2})\s*([LCRlcr]?)/)
+    const primaryNumber = parsed ? Math.min(Math.max(parseInt(parsed[1], 10), 1), 36) : 27
+    const primarySuffix = parsed ? parsed[2].toUpperCase() : ''
+    const reciprocalNumber = ((primaryNumber + 18 - 1) % 36) + 1
+    const reciprocalSuffix =
+      primarySuffix === 'L' ? 'R' : primarySuffix === 'R' ? 'L' : primarySuffix
+    const formatDesignator = (number: number, suffix: string) =>
+      String(number).padStart(2, '0') + suffix
+
+    const ends = [
+      { thresholdX: 0, inward: 1, text: formatDesignator(primaryNumber, primarySuffix) },
+      { thresholdX: length, inward: -1, text: formatDesignator(reciprocalNumber, reciprocalSuffix) },
+    ]
+
+    for (const end of ends) {
+      // Piano-key threshold stripes.
+      const stripeCount = 8
+      const stripeSpan = width * 0.85
+      const stripeUnit = stripeSpan / (stripeCount * 2 - 1) // equal stripe + gap widths
+      const keysCenterX = end.thresholdX + end.inward * (keyInset + keyLength / 2)
+      for (let stripe = 0; stripe < stripeCount; stripe++) {
+        const z = -stripeSpan / 2 + stripeUnit / 2 + stripe * 2 * stripeUnit
+        const key = new THREE.Mesh(new THREE.PlaneGeometry(keyLength, stripeUnit), centrelineMaterial)
+        key.rotation.x = -Math.PI / 2
+        key.position.set(keysCenterX, 0.1, z)
+        group.add(key)
+      }
+
+      // Runway designator, sized to sit within the pavement.
+      const designatorTexture = this._makeTextTexture(THREE, end.text, '#ffffff', null)
+      const designator = new THREE.Mesh(
+        new THREE.PlaneGeometry(designatorSize, designatorSize),
+        new THREE.MeshBasicMaterial({ map: designatorTexture, transparent: true })
+      )
+      designator.rotation.x = -Math.PI / 2
+      // Top of the digits points down the runway (toward the far end), so the
+      // number reads upright to a pilot standing at this threshold.
+      designator.rotation.z = end.inward > 0 ? -Math.PI / 2 : Math.PI / 2
+      const numberCenterX =
+        end.thresholdX + end.inward * (keyInset + keyLength + numberGap + designatorSize / 2)
+      designator.position.set(numberCenterX, 0.12, 0)
+      group.add(designator)
+    }
 
     this._scene!.add(group)
     this._runwayGroup = group
@@ -565,6 +602,22 @@ class CircuitDiagramElement extends HTMLElement {
     const ribbon = new THREE.Mesh(ribbonGeometry, ribbonMaterial)
     ribbon.renderOrder = 1
     group.add(ribbon)
+
+    // Optional ground curtain: a vertical sheet dropping from the path centreline
+    // straight down to the ground, so the track's height reads clearly.
+    if (this._boolAttr('show-curtains')) {
+      const curtainGeometry = this._buildCurtainGeometry(THREE, sampled)
+      const curtainMaterial = new THREE.MeshBasicMaterial({
+        color: hex,
+        transparent: true,
+        opacity: opacity * CURTAIN_OPACITY_FACTOR,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      })
+      const curtain = new THREE.Mesh(curtainGeometry, curtainMaterial)
+      curtain.renderOrder = 0
+      group.add(curtain)
+    }
 
     // Segment labels at the midpoint of each labelled segment (i → i+1).
     const labelSprites: THREE.Sprite[] = []
@@ -662,6 +715,35 @@ class CircuitDiagramElement extends HTMLElement {
         point.x + perpendicular.x, point.y + perpendicular.y, point.z + perpendicular.z,
         point.x - perpendicular.x, point.y - perpendicular.y, point.z - perpendicular.z
       )
+    }
+
+    const indices: number[] = []
+    for (let index = 0; index < points.length - 1; index++) {
+      const base = index * 2
+      indices.push(base, base + 1, base + 2)
+      indices.push(base + 1, base + 3, base + 2)
+    }
+
+    const geometry = new THREE.BufferGeometry()
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
+    geometry.setIndex(indices)
+    return geometry
+  }
+
+  /**
+   * Build a vertical "curtain" hanging from the path centreline down to the
+   * ground (y = 0) directly below each point. Each point contributes two
+   * vertices — one on the path, one on the ground at the same x/z — joined into
+   * a triangle strip, so the sheet conveys the track's height above the field.
+   */
+  private _buildCurtainGeometry(
+    THREE: typeof import('three'),
+    points: THREE.Vector3[]
+  ): THREE.BufferGeometry {
+    const positions: number[] = []
+    for (const point of points) {
+      positions.push(point.x, point.y, point.z) // top, on the path
+      positions.push(point.x, 0, point.z) // bottom, on the ground
     }
 
     const indices: number[] = []

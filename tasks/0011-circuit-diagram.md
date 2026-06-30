@@ -92,6 +92,25 @@ server):**
 - Added top-down (`CIRCUIT_VIEW=top`) and `corner-radius` (`CIRCUIT_CORNER`)
   hooks to `scripts/screenshot.mjs` for tuning without rebuilding.
 
+**Refinements (2026-06-30, with the developer viewing the live dev server):**
+
+- Widened the default `path-width` 20 → 60 m so ribbons read as flat tracks, not
+  lines (still per-embed via the attribute / `DEFAULT_PATH_WIDTH`).
+- Added **ground curtains** (`show-curtains`, default on): a translucent vertical
+  sheet from each path centreline straight down to the ground, so the track's
+  height above the field reads at a glance (`_buildCurtainGeometry`).
+- Widened the default `runway-width` 30 → 90 m so the runway stays wider than the
+  path and reads as the landing surface (not to scale).
+- Reworked runway threshold markings: **piano keys** (longitudinal white stripes)
+  at both ends; the named designator at `x = 0` and its **reciprocal** at the far
+  end (`27`/`09`, `L`/`R` swapped); each number rotated to read upright to a pilot
+  standing at that threshold; designator sized to sit within the pavement.
+- Example tuning: paths made more translucent (`…cc` → `…99`) so the runway
+  numbers show through; the glide approach reshaped into a few clearly-straight
+  descending legs (was a near-smooth many-segment curve).
+- Added a `CIRCUIT_VIEW=runway` close-up hook to `scripts/screenshot.mjs` for
+  inspecting the threshold markings.
+
 **Tuning to consider (from the first render):**
 
 - At the default oblique camera the circuit spans ~3 km, so a 20 m ribbon reads
