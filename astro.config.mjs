@@ -49,6 +49,7 @@ export default defineConfig({
           items: [
             { label: 'Aerofoil Dynamics',  slug: 'aerofoil-dynamics' },
             { label: 'Briefing Overview', slug: 'briefing-overview' },
+            { label: 'Circuit Diagram',   slug: 'circuit-diagram' },
             { label: 'Climb Performance', slug: 'climb-performance' },
             { label: 'Four Forces',       slug: 'four-forces' },
             { label: 'Pitch Roll Yaw',    slug: 'pitch-roll-yaw' },

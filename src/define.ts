@@ -7,9 +7,11 @@ import { ClimbPerformanceElement } from './components/ClimbPerformance'
 import { BriefingOverviewElement } from './components/BriefingOverview'
 import { PitchRollYawElement } from './components/PitchRollYaw'
 import { AerofoilDynamicsElement } from './components/AerofoilDynamics'
+import { CircuitDiagramElement } from './components/CircuitDiagram'
 
 customElements.define('four-forces',          FourForcesElement)
 customElements.define('climb-performance',    ClimbPerformanceElement)
 customElements.define('briefing-overview',    BriefingOverviewElement)
 customElements.define('pitch-roll-yaw',       PitchRollYawElement)
 customElements.define('aerofoil-dynamics',    AerofoilDynamicsElement)
+customElements.define('circuit-diagram',      CircuitDiagramElement)

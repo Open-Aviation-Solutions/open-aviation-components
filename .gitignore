@@ -1,3 +1,10 @@
 dist/
 node_modules/
 .astro/
+.playwright-browsers/
+screenshots/
+
+# Editor swap files
+*.swp
+*.swo
+.*.sw?

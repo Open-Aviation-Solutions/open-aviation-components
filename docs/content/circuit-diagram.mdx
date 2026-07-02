@@ -1,0 +1,105 @@
+---
+title: Circuit Diagram
+description: An interactive 3D viewer for circuit and approach procedures — a generic airfield with a labelled runway and one or more flight paths drawn as flat, coloured ribbons you can compare side by side.
+---
+
+import CircuitDiagram from '../components/CircuitDiagram.astro'
+import ComponentDescription from '../components/ComponentDescription.astro'
+
+<ComponentDescription />
+
+Circuit briefings spend a lot of time on geometry that is hard to draw on a whiteboard: where the turns happen, how high you should be on each leg, and how one procedure differs from another against the same runway. A flat plan view loses the altitudes; a side view loses the ground track. This tool keeps both — an orbitable 3D airfield where each procedure is a coloured ribbon following its own track and climb profile.
+
+Drag to orbit, scroll to zoom. Use the legend (top-left) to show or hide individual procedures so you can study one in isolation or overlay them for comparison. Click the **play** button next to a procedure to fly the camera along that track — it loops, and you can **pause** to look around and discuss a particular point, then resume from the same spot.
+
+<CircuitDiagram />
+
+The example shows a standard left-hand circuit (blue) and an engine-failure **glide approach** (red) flown from the downwind leg. Toggle them in the legend to see how the glide approach trades the powered circuit's square pattern for a continuous descending turn aimed at the threshold.
+
+## Description
+
+The viewer renders a generic flat airfield with a single labelled runway, then overlays one or more **flight paths**. Each path is a list of waypoints in metres relative to the runway, drawn as a flat, semi-transparent ribbon that climbs and descends with the waypoint altitudes. Turns are smoothed into arcs.
+
+Because a real circuit is kilometres wide but only a few hundred metres high, it would look almost flat at true scale. The `vertical-exaggeration` factor (default `3`) stretches the vertical axis so the climb gradients and pattern altitude read clearly — keep this in mind when judging heights by eye.
+
+### Coordinate system
+
+Waypoints are `x,y,alt` triples in **metres**:
+
+- **x** — distance along the runway centreline. `x = 0` is the **landing threshold**; the rollout and climb-out are positive `x`, so the final approach lies at negative `x`.
+- **y** — lateral offset from the centreline, with **positive `y` to the right** when looking in the landing direction. A left-hand circuit therefore uses negative `y`.
+- **alt** — height above the ground.
+
+Altitudes are in metres for consistency, but instructors think in feet. Rather than convert in the geometry, write feet into the free-text **segment labels** (e.g. `Downwind · 1000 ft`). For reference, a 1000 ft circuit height is ≈ 305 m.
+
+## For instructors
+
+- **Compare procedures** — show a standard circuit alongside a flapless, glide, or short-field approach against the same runway, and toggle them in the legend to highlight the differences.
+- **Make altitudes concrete** — label each leg with its target height in feet so students see the climb and descent profile, not just the ground track.
+- **Brief joins** — overhead, crosswind, mid-downwind, and straight-in joins are just additional paths; add one per join to walk through the options.
+
+## For trainees
+
+- Orbit the circuit to a near-plan view, then tilt down to see how altitude changes around the pattern.
+- Hide every path except the one you are flying next, then add the others back to see where they diverge.
+
+## Defining paths
+
+Paths are declared as `<circuit-path>` child elements. Each takes a `label` (shown in the legend), a `color` (with transparency carried in the colour itself), a `points` list, and optional `segment-labels`:
+
+```html
+<circuit-diagram runway="27" vertical-exaggeration="3">
+  <circuit-path
+    label="Standard circuit"
+    color="#3b82f6cc"
+    points="0,0,0; 700,0,0; 2000,0,175; 2000,-1000,305; -1500,-1000,305; -1500,0,180; 0,0,0"
+    segment-labels="0:Take-off roll; 1:Upwind; 2:Crosswind; 3:Downwind · 1000 ft; 4:Base; 5:Final"
+  ></circuit-path>
+</circuit-diagram>
+```
+
+The first two waypoints sit on the runway at zero altitude — the take-off roll — so the aircraft only lifts off part-way down. The climb then holds a constant gradient until it levels off at circuit height on the downwind leg.
+
+- `color` accepts `#rrggbbaa`, `#rrggbb`, or `rgba(...)`. The alpha channel sets the ribbon's transparency.
+- `segment-labels` are `index:text` pairs, where segment `index` runs from waypoint `index` to waypoint `index + 1`. The text is free-form, so it can carry feet altitudes or any other note, and is shown at the segment's midpoint.
+
+The same data can be supplied programmatically via the element's `.paths` property.
+
+## Embedding this component
+
+```html
+<script type="module">
+  import 'https://unpkg.com/@open-aviation-solutions/components/dist/lib/define.es.js';
+</script>
+
+<circuit-diagram runway="27" vertical-exaggeration="3">
+  <circuit-path label="Standard circuit" color="#3b82f6cc"
+    points="0,0,0; 700,0,0; 2000,0,175; 2000,-1000,305; -1500,-1000,305; -1500,0,180; 0,0,0">
+  </circuit-path>
+</circuit-diagram>
+```
+
+## Attributes
+
+| Attribute | Default | Description |
+|-----------|---------|-------------|
+| `height` | `480px` | CSS height of the component |
+| `runway` | `27` | Runway designator (drives the painted number and the runway heading) |
+| `runway-length` | `1500` | Runway length in metres |
+| `runway-width` | `30` | Runway width in metres |
+| `vertical-exaggeration` | `3` | Multiplier applied to altitude for display |
+| `path-width` | `20` | Ribbon width in metres |
+| `corner-radius` | `100` | Corner fillet radius in metres (`0` for sharp corners) |
+| `wind-from` | runway heading | Direction in degrees the wind blows *from*; orients the windsock |
+| `show-windsock` | `true` | Set to `"false"` to hide the windsock |
+| `show-grid` | `true` | Set to `"false"` to hide the ground distance grid |
+| `show-legend` | `true` | Set to `"false"` to hide the clickable legend |
+| `show-help` | — | Set to `"false"` to hide the in-component help (?) link |
+
+## Dependencies
+
+Requires `three` (≥ 0.184) as a peer dependency:
+
+```bash
+npm install three @open-aviation-solutions/components
+```
