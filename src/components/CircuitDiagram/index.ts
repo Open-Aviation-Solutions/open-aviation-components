@@ -17,7 +17,7 @@ const BROADCAST_CHANNEL = 'circuit-diagram-sync'
 const DEFAULT_RUNWAY = '27'
 const DEFAULT_RUNWAY_LENGTH = 1500
 const DEFAULT_RUNWAY_WIDTH = 90
-const DEFAULT_VERTICAL_EXAGGERATION = 3
+const DEFAULT_VERTICAL_EXAGGERATION = 2
 const DEFAULT_PATH_WIDTH = 60
 const DEFAULT_CORNER_RADIUS = 100
 /** Opacity of a path's ground curtain relative to the ribbon's own opacity. */
