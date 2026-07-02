@@ -79,8 +79,12 @@ but only ~300 m high and would otherwise look flat.
   wind. Sock flies downwind: bearing `windFrom + 180`, offset from the runway
   heading (the rotation is **negated** so +z reads as north and the sock points
   true downwind — bearings increase clockwise, +y rotation is anticlockwise).
-  Default `wind-from` is the runway heading (into-wind landing). Size is fixed —
-  it does not yet reflect `wind-speed` (see the task's "Next steps").
+  Default `wind-from` is the runway heading (into-wind landing). The sock also
+  **droops with wind strength**: it hangs from a pivot at the pole top, horizontal
+  at/above `WINDSOCK_FULL_EXTENSION_SPEED` and swinging down to `WINDSOCK_MAX_DROOP`
+  as the wind eases. An unset `wind-speed` shows a standard fully-extended sock
+  (direction only); an explicit `wind-speed="0"` hangs limp. The pole is tall
+  enough that even a full droop clears the ground.
 - **Legend** — HTML overlay (not WebGL). Each entry has a colour-swatch/label
   toggle button (toggles that path's group visibility) and a play/pause button
   that flies the camera along the track (see below). Synced across tabs.
@@ -102,8 +106,11 @@ but only ~300 m high and would otherwise look flat.
   climb/descent pitch. `WCA = asin(clamp((wind-speed / airspeed) · crosswind
   fraction))` from the local tangent and `_worldWindToward()` (the verified
   bearing→world wind vector). `wind-speed` `0` disables it (camera faces straight
-  along the track). Note: the flight still advances at constant *ground* speed,
-  and the windsock size is fixed — see the task's "Next steps".
+  along the track). The crab eases in with height (`smoothstep` from
+  `CRAB_GROUND_HEIGHT` 5 to `CRAB_FULL_HEIGHT` 60 world units): none on the
+  take-off roll / landing rollout (aligned with the runway), ramping to full once
+  airborne so lift-off and touchdown aren't a snap. Note: the flight still
+  advances at constant *ground* speed — see the task's "Next steps".
 - **BroadcastChannel** (`circuit-diagram-sync`) — syncs camera position, per-path
   visibility toggles, and flythrough play/pause/resume across tabs for
   presenter/slide pairing (remote camera is ignored while actively flying, but
@@ -131,7 +138,7 @@ optional `segment-labels`.
 | `path-width` | `60` | Ribbon width in metres (tweak via the attribute, or the `DEFAULT_PATH_WIDTH` constant for a new baseline) |
 | `corner-radius` | `100` | Corner fillet radius in metres (`0` = sharp corners) |
 | `wind-from` | runway heading | Direction in degrees the wind blows *from*; orients the windsock and the flythrough crab |
-| `wind-speed` | `0` | Wind speed (paired with `airspeed`); drives the flythrough crab angle (`0` = no crab) |
+| `wind-speed` | `0` | Wind speed (paired with `airspeed`); drives the flythrough crab angle (`0` = no crab) and the windsock droop (unset = fully extended) |
 | `airspeed` | `90` | Nominal airspeed (same unit as `wind-speed`) for the crab calculation |
 | `show-windsock` | `true` | Show the larger-than-life windsock (`false` hides) |
 | `show-curtains` | `true` | Show the vertical curtain under each path centreline (`false` hides) |

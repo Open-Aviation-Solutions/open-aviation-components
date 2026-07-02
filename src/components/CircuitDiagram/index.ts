@@ -34,6 +34,11 @@ const DEFAULT_SKY_COLOR = '#9ec9e8'
 // ---- track flythrough ("fly this track") ---------------------------------
 /** Camera height (world units) above the track while flying it. */
 const FLIGHT_HEIGHT_ABOVE_TRACK = 10
+/** Track-height band (world units) over which the crab eases in/out: none at or
+ * below `CRAB_GROUND_HEIGHT` (rolling, aligned with the runway) ramping to the
+ * full crab angle by `CRAB_FULL_HEIGHT`, so lift-off and touchdown aren't a snap. */
+const CRAB_GROUND_HEIGHT = 5
+const CRAB_FULL_HEIGHT = 60
 /** Clearance (world units) from the flight path to the bottom of a segment label,
  * so the flythrough camera passes underneath the labels. */
 const LABEL_CLEARANCE_ABOVE_FLIGHT = 10
@@ -46,6 +51,10 @@ const FLIGHT_MIN_MS = 9000
 const FLIGHT_MAX_MS = 45000
 /** Nominal airspeed (knots) used with `wind-speed` to compute the crab angle. */
 const DEFAULT_AIRSPEED = 90
+/** Wind speed (same unit as `wind-speed`) at which the windsock is fully horizontal. */
+const WINDSOCK_FULL_EXTENSION_SPEED = 30
+/** Windsock droop angle (radians) at calm (0 = horizontal). */
+const WINDSOCK_MAX_DROOP = (75 * Math.PI) / 180
 
 const PLAY_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2.5v11l9-5.5z"/></svg>'
 const PAUSE_ICON =
@@ -269,6 +278,7 @@ class CircuitDiagramElement extends HTMLElement {
     'path-width',
     'corner-radius',
     'wind-from',
+    'wind-speed',
     'show-windsock',
     'show-curtains',
     'show-grid',
@@ -822,8 +832,9 @@ class CircuitDiagramElement extends HTMLElement {
   private _buildWindsock(THREE: typeof import('three')) {
     const group = new THREE.Group()
 
-    // Larger-than-life so it reads from the orbit camera: ~40 m pole, ~70 m sock.
-    const poleHeight = 40
+    // Larger-than-life so it reads from the orbit camera. The pole is tall enough
+    // that the sock clears the ground even when fully drooped (calm).
+    const poleHeight = 90
     const sockLength = 70
     const sockMouthRadius = 14
     const sockTailRadius = 5
@@ -833,16 +844,31 @@ class CircuitDiagramElement extends HTMLElement {
     pole.position.y = poleHeight / 2
     group.add(pole)
 
-    // Sock built pointing along +x, then the whole group is rotated to the wind.
+    // Sock built pointing along +x from the origin (its mouth), so the pivot at
+    // the pole top can droop it downward for lighter winds.
     const sockGeometry = new THREE.CylinderGeometry(sockTailRadius, sockMouthRadius, sockLength, 16, 1, true)
     sockGeometry.rotateZ(-Math.PI / 2) // axis from +y to +x
-    sockGeometry.translate(sockLength / 2, poleHeight, 0)
+    sockGeometry.translate(sockLength / 2, 0, 0)
     const sockMaterial = new THREE.MeshLambertMaterial({
       color: 0xff7a1a,
       side: THREE.DoubleSide,
     })
     const sock = new THREE.Mesh(sockGeometry, sockMaterial)
-    group.add(sock)
+
+    // Droop reflects wind strength: horizontal at/above the full-extension speed,
+    // hanging progressively lower as the wind eases. An unset `wind-speed` shows a
+    // standard fully-extended sock (direction only, no strength modelled).
+    const windSpeedAttr = this.getAttribute('wind-speed')
+    const displaySpeed =
+      windSpeedAttr !== null && Number.isFinite(parseFloat(windSpeedAttr))
+        ? this._windSpeed
+        : WINDSOCK_FULL_EXTENSION_SPEED
+    const extension = Math.min(displaySpeed / WINDSOCK_FULL_EXTENSION_SPEED, 1)
+    const sockPivot = new THREE.Group()
+    sockPivot.position.set(0, poleHeight, 0)
+    sockPivot.rotation.z = -(1 - extension) * WINDSOCK_MAX_DROOP // tip swings down
+    sockPivot.add(sock)
+    group.add(sockPivot)
 
     // The sock flies downwind: bearing the wind blows toward = windFrom + 180.
     // Rotate from +x (landing direction) by the bearing offset about world up.
@@ -1288,7 +1314,9 @@ class CircuitDiagramElement extends HTMLElement {
     const startQuat = new THREE.Quaternion().setFromRotationMatrix(
       new THREE.Matrix4().lookAt(
         startPos,
-        startPos.clone().add(this._crabHeading(tangents[0], windToward, windRatio)),
+        startPos.clone().add(
+          this._crabHeading(tangents[0], windToward, windRatio, startPos.y - FLIGHT_HEIGHT_ABOVE_TRACK)
+        ),
         up
       )
     )
@@ -1364,17 +1392,28 @@ class CircuitDiagramElement extends HTMLElement {
 
     camera.position.copy(position)
     camera.up.copy(playback.up)
-    camera.lookAt(position.clone().add(this._crabHeading(tangent, playback.windToward, playback.windRatio)))
+    const trackHeight = position.y - FLIGHT_HEIGHT_ABOVE_TRACK
+    camera.lookAt(
+      position.clone().add(this._crabHeading(tangent, playback.windToward, playback.windRatio, trackHeight))
+    )
   }
 
   /**
    * Heading the camera should face: the track tangent yawed into wind by the
    * wind-correction angle, keeping the same climb/descent pitch. With no wind
-   * (`windRatio === 0`) this is just the tangent.
+   * (`windRatio === 0`) this is just the tangent. The crab eases in over
+   * `CRAB_GROUND_HEIGHT`→`CRAB_FULL_HEIGHT`, so on the ground (rolling, aligned
+   * with the runway) there is none and lift-off/touchdown transition smoothly.
    */
-  private _crabHeading(tangent: THREE.Vector3, windToward: THREE.Vector3, windRatio: number): THREE.Vector3 {
+  private _crabHeading(
+    tangent: THREE.Vector3,
+    windToward: THREE.Vector3,
+    windRatio: number,
+    trackHeight: number
+  ): THREE.Vector3 {
     const THREE = this._THREE!
-    if (windRatio <= 0) return tangent
+    const blend = smoothstep(CRAB_GROUND_HEIGHT, CRAB_FULL_HEIGHT, trackHeight)
+    if (windRatio <= 0 || blend <= 0) return tangent
     const horizontal = new THREE.Vector3(tangent.x, 0, tangent.z)
     const horizontalLength = horizontal.length()
     if (horizontalLength < 1e-6) return tangent
@@ -1383,8 +1422,8 @@ class CircuitDiagramElement extends HTMLElement {
     const right = new THREE.Vector3(-horizontal.z, 0, horizontal.x)
     // Rightward crosswind as a fraction of airspeed = sin(wind-correction angle).
     const crosswind = Math.max(-1, Math.min(1, windToward.dot(right) * windRatio))
-    // Crab into wind: yaw left when the wind pushes right, and vice versa.
-    const yawRight = -Math.asin(crosswind)
+    // Crab into wind (eased in with height): yaw left when the wind pushes right.
+    const yawRight = -Math.asin(crosswind) * blend
     const cos = Math.cos(yawRight)
     const sin = Math.sin(yawRight)
     return new THREE.Vector3(

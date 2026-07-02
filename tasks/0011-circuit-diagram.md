@@ -184,13 +184,25 @@ tool) and a chase camera (just an offset of the existing animation).
   verified bearing→world mapping (`_worldWindToward()`) so the two agree.
 - Verified in the headless render (temporary 30 kt northerly on rwy 27): take-off
   crabs right into the wind (runway falls left), windsock points downwind.
+- Refinement (2026-07-02): the crab eases in with height (`smoothstep` from
+  `CRAB_GROUND_HEIGHT` 5 to `CRAB_FULL_HEIGHT` 60 world units) — none on the
+  take-off roll / rollout (aligned with the runway), ramping to full once
+  airborne so lift-off/touchdown aren't a snap. Verified: runway dead-centre on
+  the roll, crab engaged once airborne.
+
+**Windsock reflects wind strength (2026-07-02, done):**
+
+- The sock now hangs from a pivot at the pole top and **droops with wind speed**:
+  horizontal at/above `WINDSOCK_FULL_EXTENSION_SPEED` (30) and swinging down to
+  `WINDSOCK_MAX_DROOP` (75°) as the wind eases. An unset `wind-speed` shows a
+  standard fully-extended sock (direction only); `wind-speed="0"` hangs limp. The
+  pole was raised to 90 so a full droop still clears the ground. `wind-speed` is
+  now an observed attribute (rebuilds the scene).
+- Verified in the headless render (temporary 4 kt crosswind): the sock hangs at
+  roughly the expected angle rather than sticking out horizontally.
 
 **Next steps (flagged for later):**
 
-- **Windsock should reflect wind *strength*, not just direction** — at present the
-  sock is a fixed size regardless of `wind-speed`. It should extend/stiffen (or
-  droop) with the wind speed used for the crab, so the visual matches the crab
-  magnitude.
 - **Camera airspeed should be constant, not ground speed** — the flight currently
   advances at constant ground speed along the track (`FLIGHT_SPEED`). With wind it
   should hold constant *airspeed*, so ground speed (and thus the along-track pace)
