@@ -201,12 +201,15 @@ tool) and a chase camera (just an offset of the existing animation).
 - Verified in the headless render (temporary 4 kt crosswind): the sock hangs at
   roughly the expected angle rather than sticking out horizontally.
 
-**Next steps (flagged for later):**
+**Constant airspeed (2026-07-02, done):**
 
-- **Camera airspeed should be constant, not ground speed** — the flight currently
-  advances at constant ground speed along the track (`FLIGHT_SPEED`). With wind it
-  should hold constant *airspeed*, so ground speed (and thus the along-track pace)
-  varies with the head/tailwind component — faster downwind, slower into wind.
+- The flythrough now holds constant *airspeed*, so the along-track pace varies
+  with the wind — faster with a tailwind, slower into a headwind. `_startPlayback()`
+  solves the on-track ground speed per vertex, `g = alongWind + √(airspeed² −
+  crosswind²)` (airspeed → `FLIGHT_SPEED`, wind → `FLIGHT_SPEED × windRatio`), and
+  paces playback by a normalised time table (`timeFractions`); `_positionAtTime()`
+  replaces the old arc-length `_positionAlong()`. With no wind `g = FLIGHT_SPEED`
+  everywhere, so pacing is unchanged. Verified the flythrough still renders.
 
 **Still to do:**
 

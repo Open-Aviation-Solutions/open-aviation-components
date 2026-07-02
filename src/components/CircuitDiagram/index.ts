@@ -97,9 +97,9 @@ interface PlaybackState {
   positions: THREE.Vector3[]
   /** Unit tangents at each position (the local path direction, 3-D). */
   tangents: THREE.Vector3[]
-  /** Cumulative arc length up to each position. */
-  cumulative: number[]
-  totalLength: number
+  /** Normalised cumulative *time* (0→1) to reach each position, so the along-track
+   * pace reflects constant airspeed (faster with a tailwind, slower into wind). */
+  timeFractions: number[]
   phase: 'approach' | 'fly'
   phaseStart: number
   approachDuration: number
@@ -1299,16 +1299,40 @@ class CircuitDiagramElement extends HTMLElement {
       return tangent.normalize()
     })
 
-    const cumulative = [0]
-    for (let pointIndex = 1; pointIndex < positions.length; pointIndex++) {
-      cumulative.push(cumulative[pointIndex - 1] + positions[pointIndex].distanceTo(positions[pointIndex - 1]))
-    }
-    const totalLength = cumulative[cumulative.length - 1]
-
     // Crab into wind: the camera flies the exact track but yaws toward the wind
     // so the "nose" points off-track in a crosswind.
     const windToward = this._worldWindToward()
     const windRatio = this._airspeed > 0 ? this._windSpeed / this._airspeed : 0
+
+    // Constant airspeed: the ground speed along each leg varies with the
+    // along-track wind. Airspeed maps to FLIGHT_SPEED (the calm ground speed) and
+    // the wind to FLIGHT_SPEED × windRatio, both in world units/second. Solving
+    // |airspeed vector| = const for the on-track ground speed g gives
+    // g = alongWind + √(airspeed² − crosswind²). With no wind this is FLIGHT_SPEED
+    // everywhere (unchanged pacing).
+    const airspeed = FLIGHT_SPEED
+    const windMagnitude = FLIGHT_SPEED * windRatio
+    const groundSpeeds = tangents.map(tangent => {
+      const horizontal = new THREE.Vector3(tangent.x, 0, tangent.z)
+      if (horizontal.lengthSq() < 1e-9) return airspeed
+      horizontal.normalize()
+      const right = new THREE.Vector3(-horizontal.z, 0, horizontal.x)
+      const alongWind = windToward.dot(horizontal) * windMagnitude
+      const crossWind = windToward.dot(right) * windMagnitude
+      const speed = alongWind + Math.sqrt(Math.max(0, airspeed * airspeed - crossWind * crossWind))
+      return Math.max(speed, airspeed * 0.15) // floor so a strong headwind never stalls
+    })
+
+    // Cumulative travel time per vertex (segment length / average leg speed),
+    // normalised to 0→1 so playback pacing is time-based.
+    const times = [0]
+    for (let pointIndex = 1; pointIndex < positions.length; pointIndex++) {
+      const segmentLength = positions[pointIndex].distanceTo(positions[pointIndex - 1])
+      const averageSpeed = (groundSpeeds[pointIndex] + groundSpeeds[pointIndex - 1]) / 2
+      times.push(times[pointIndex - 1] + segmentLength / averageSpeed)
+    }
+    const totalTime = times[times.length - 1] || 1
+    const timeFractions = times.map(time => time / totalTime)
 
     const startPos = positions[0].clone()
     const startQuat = new THREE.Quaternion().setFromRotationMatrix(
@@ -1321,18 +1345,14 @@ class CircuitDiagramElement extends HTMLElement {
       )
     )
 
-    const flyDuration = Math.min(
-      FLIGHT_MAX_MS,
-      Math.max(FLIGHT_MIN_MS, (totalLength / FLIGHT_SPEED) * 1000)
-    )
+    const flyDuration = Math.min(FLIGHT_MAX_MS, Math.max(FLIGHT_MIN_MS, totalTime * 1000))
 
     this._orbitControls.enabled = false
     this._playback = {
       index,
       positions,
       tangents,
-      cumulative,
-      totalLength,
+      timeFractions,
       phase: 'approach',
       phaseStart: performance.now(),
       approachDuration: FLIGHT_APPROACH_MS,
@@ -1369,21 +1389,21 @@ class CircuitDiagramElement extends HTMLElement {
     }
 
     // Loop continuously: wrap the elapsed fraction so the flight repeats until
-    // the user pauses it.
+    // the user pauses it. Pacing is by time (constant airspeed), so ground speed
+    // varies with the along-track wind.
     const t = (now - playback.phaseStart) / playback.flyDuration
-    const loopFraction = t - Math.floor(t)
-    this._positionAlong(playback, loopFraction * playback.totalLength)
+    this._positionAtTime(playback, t - Math.floor(t))
   }
 
-  /** Place + orient the camera at a given arc-length distance along the track. */
-  private _positionAlong(playback: PlaybackState, distance: number) {
+  /** Place + orient the camera at a normalised time fraction (0→1) along the track. */
+  private _positionAtTime(playback: PlaybackState, timeFraction: number) {
     const camera = this._camera!
-    const cumulative = playback.cumulative
+    const timeFractions = playback.timeFractions
     let segment = 0
-    while (segment < cumulative.length - 2 && cumulative[segment + 1] < distance) segment++
+    while (segment < timeFractions.length - 2 && timeFractions[segment + 1] < timeFraction) segment++
 
-    const segmentLength = cumulative[segment + 1] - cumulative[segment] || 1
-    const fraction = Math.min(1, Math.max(0, (distance - cumulative[segment]) / segmentLength))
+    const span = timeFractions[segment + 1] - timeFractions[segment] || 1
+    const fraction = Math.min(1, Math.max(0, (timeFraction - timeFractions[segment]) / span))
 
     const position = playback.positions[segment].clone().lerp(playback.positions[segment + 1], fraction)
     const tangent = playback.tangents[segment].clone().lerp(playback.tangents[segment + 1], fraction)

@@ -91,9 +91,10 @@ but only ~300 m high and would otherwise look flat.
 - **Track flythrough** — the legend play button flies the camera along a track
   for a guided tour. `_startPlayback()` builds the flight from the path's stored
   world centreline raised `FLIGHT_HEIGHT_ABOVE_TRACK` above the ribbon: it eases
-  from the current view to the first point (`approach` phase), then moves at
-  `FLIGHT_SPEED` along the track always facing the local tangent (`fly` phase),
-  driven per-frame from `_loop()` via `_advancePlayback()`. The flight **loops**
+  from the current view to the first point (`approach` phase), then moves along
+  the track always facing the local tangent (`fly` phase), driven per-frame from
+  `_loop()` via `_advancePlayback()`. Pacing is time-based (`timeFractions`) for
+  constant airspeed — see the crab bullet. The flight **loops**
   continuously. The button toggles **pause/resume** (`_pausePlayback()` /
   `_resumePlayback()`): pausing frees OrbitControls so you can look around and
   resumes from the same spot (`pausedElapsed`); a pointer-down on the canvas also
@@ -109,8 +110,14 @@ but only ~300 m high and would otherwise look flat.
   along the track). The crab eases in with height (`smoothstep` from
   `CRAB_GROUND_HEIGHT` 5 to `CRAB_FULL_HEIGHT` 60 world units): none on the
   take-off roll / landing rollout (aligned with the runway), ramping to full once
-  airborne so lift-off and touchdown aren't a snap. Note: the flight still
-  advances at constant *ground* speed — see the task's "Next steps".
+  airborne so lift-off and touchdown aren't a snap.
+- **Constant airspeed** — the flight holds constant airspeed rather than constant
+  ground speed, so the along-track pace varies with the wind: faster with a
+  tailwind, slower into a headwind. `_startPlayback()` solves the on-track ground
+  speed per vertex, `g = alongWind + √(airspeed² − crosswind²)` (airspeed maps to
+  `FLIGHT_SPEED`, wind to `FLIGHT_SPEED × windRatio`), and stores the normalised
+  cumulative travel time as `timeFractions`; `_positionAtTime()` looks up the
+  position by time. With no wind `g = FLIGHT_SPEED` everywhere (unchanged pacing).
 - **BroadcastChannel** (`circuit-diagram-sync`) — syncs camera position, per-path
   visibility toggles, and flythrough play/pause/resume across tabs for
   presenter/slide pairing (remote camera is ignored while actively flying, but
