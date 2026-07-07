@@ -22,6 +22,12 @@ export default defineConfig({
       title: 'Open Aviation Components',
       description: 'Interactive aviation training web components.',
       customCss: ['./docs/styles/custom.css'],
+      components: {
+        // Tie this sub-site to the parent project (openaviation.solutions):
+        // the mark in the header and a credit line in the footer both link out.
+        SiteTitle: './docs/overrides/SiteTitle.astro',
+        Footer: './docs/overrides/Footer.astro',
+      },
       head: [
         { tag: 'meta', attrs: { property: 'og:image', content: ogImageUrl } },
         { tag: 'meta', attrs: { property: 'og:image:width', content: '1200' } },

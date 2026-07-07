@@ -1,0 +1,53 @@
+---
+// Overrides Starlight's SiteTitle to tie this sub-site to its parent project.
+// The Open Aviation Solutions mark links out to the parent site; the wordmark
+// still links to this sub-site's home (siteTitleHref). Two sibling links — not
+// nested — so the markup stays valid.
+import logoUrl from '../assets/logo-mark.svg?url'
+import logoDarkUrl from '../assets/logo-mark-dark.svg?url'
+
+const { siteTitleHref } = Astro.locals.starlightRoute
+const PARENT_SITE = 'https://openaviation.solutions'
+---
+
+<span class="site-title sl-flex">
+	<a href={PARENT_SITE} class="parent-mark sl-flex" aria-label="Open Aviation Solutions — parent site">
+		<img src={logoUrl} alt="" aria-hidden="true" class="logo-mark dark:sl-hidden" />
+		<img src={logoDarkUrl} alt="" aria-hidden="true" class="logo-mark light:sl-hidden" />
+	</a>
+	<a href={siteTitleHref} class="title-text" translate="no">
+		Open Aviation <span class="accent">Components</span>
+	</a>
+</span>
+
+<style>
+	@layer starlight.core {
+		.site-title {
+			align-items: center;
+			gap: var(--sl-nav-gap);
+			font-size: var(--sl-text-h4);
+			font-weight: 600;
+			white-space: nowrap;
+			min-width: 0;
+		}
+		.parent-mark {
+			align-items: center;
+			flex-shrink: 0;
+		}
+		.logo-mark {
+			height: calc(var(--sl-nav-height) - 2 * var(--sl-nav-pad-y));
+			width: auto;
+			max-width: 100%;
+			object-fit: contain;
+			object-position: 0 50%;
+		}
+		.title-text {
+			color: var(--sl-color-white);
+			text-decoration: none;
+			overflow: hidden;
+		}
+		.accent {
+			color: var(--sl-color-accent-high);
+		}
+	}
+</style>

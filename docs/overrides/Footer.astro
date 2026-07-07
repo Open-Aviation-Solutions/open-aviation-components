@@ -1,0 +1,48 @@
+---
+// Overrides Starlight's Footer to add a credit line linking back to the parent
+// project. The built-in Footer (page pagination, last-updated, edit link) is
+// rendered first via the default component, then the parent credit below it.
+import Default from '@astrojs/starlight/components/Footer.astro'
+import logoUrl from '../assets/logo-mark.svg?url'
+import logoDarkUrl from '../assets/logo-mark-dark.svg?url'
+
+const PARENT_SITE = 'https://openaviation.solutions'
+---
+
+<Default><slot /></Default>
+
+<div class="parent-credit">
+	<a href={PARENT_SITE} class="parent-credit-link">
+		<img src={logoUrl} alt="" aria-hidden="true" class="credit-mark dark:sl-hidden" />
+		<img src={logoDarkUrl} alt="" aria-hidden="true" class="credit-mark light:sl-hidden" />
+		<span>Part of <strong>Open Aviation Solutions</strong></span>
+	</a>
+</div>
+
+<style>
+	.parent-credit {
+		margin-top: 1.5rem;
+		padding-top: 1rem;
+		border-top: 1px solid var(--sl-color-hairline);
+	}
+	.parent-credit-link {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.5rem;
+		font-size: var(--sl-text-sm);
+		color: var(--sl-color-gray-3);
+		text-decoration: none;
+	}
+	.parent-credit-link:hover {
+		color: var(--sl-color-accent-high);
+	}
+	.parent-credit-link strong {
+		font-weight: 600;
+		color: var(--sl-color-white);
+	}
+	.credit-mark {
+		height: 1.5rem;
+		width: auto;
+		flex-shrink: 0;
+	}
+</style>
