@@ -22,7 +22,7 @@ Runway-centric, metres:
 Looking down `+x` (the landing direction), Three.js puts `+z` on the viewer's
 right, so `worldZ = +y` makes `+y` read as "right" (and a left-hand circuit,
 which uses negative `y`, correctly appears on the left). Altitude is multiplied
-by `vertical-exaggeration` (default 3) because a real circuit is kilometres wide
+by `vertical-exaggeration` (default 2) because a real circuit is kilometres wide
 but only ~300 m high and would otherwise look flat.
 
 ## Key internals
@@ -141,7 +141,7 @@ optional `segment-labels`.
 | `runway` | `27` | Runway designator (drives the painted number and the runway heading) |
 | `runway-length` | `1500` | Runway length in metres |
 | `runway-width` | `90` | Runway width in metres (kept wider than `path-width` so the runway reads as the landing surface; not to scale) |
-| `vertical-exaggeration` | `3` | Multiplier applied to altitude for display |
+| `vertical-exaggeration` | `2` | Multiplier applied to altitude for display |
 | `path-width` | `60` | Ribbon width in metres (tweak via the attribute, or the `DEFAULT_PATH_WIDTH` constant for a new baseline) |
 | `corner-radius` | `100` | Corner fillet radius in metres (`0` = sharp corners) |
 | `wind-from` | runway heading | Direction in degrees the wind blows *from*; orients the windsock and the flythrough crab |

@@ -14,13 +14,13 @@ Drag to orbit, scroll to zoom. Use the legend (top-left) to show or hide individ
 
 <CircuitDiagram />
 
-The example shows a standard left-hand circuit (blue) and an engine-failure **glide approach** (red) flown from the downwind leg. Toggle them in the legend to see how the glide approach trades the powered circuit's square pattern for a continuous descending turn aimed at the threshold.
+The example shows a standard left-hand circuit (blue) and a **mid-field crosswind join** (yellow). The join starts with a circling descent on the dead side from 1500 ft down to circuit height, crosses the field at mid-field, then rolls onto the downwind leg and continues around base and final to land. Toggle them in the legend, or fly the join with its play button, to see how it blends into the pattern.
 
 ## Description
 
 The viewer renders a generic flat airfield with a single labelled runway, then overlays one or more **flight paths**. Each path is a list of waypoints in metres relative to the runway, drawn as a flat, semi-transparent ribbon that climbs and descends with the waypoint altitudes. Turns are smoothed into arcs.
 
-Because a real circuit is kilometres wide but only a few hundred metres high, it would look almost flat at true scale. The `vertical-exaggeration` factor (default `3`) stretches the vertical axis so the climb gradients and pattern altitude read clearly — keep this in mind when judging heights by eye.
+Because a real circuit is kilometres wide but only a few hundred metres high, it would look almost flat at true scale. The `vertical-exaggeration` factor (default `2`) stretches the vertical axis so the climb gradients and pattern altitude read clearly — keep this in mind when judging heights by eye.
 
 ### Coordinate system
 
@@ -48,7 +48,7 @@ Altitudes are in metres for consistency, but instructors think in feet. Rather t
 Paths are declared as `<circuit-path>` child elements. Each takes a `label` (shown in the legend), a `color` (with transparency carried in the colour itself), a `points` list, and optional `segment-labels`:
 
 ```html
-<circuit-diagram runway="27" vertical-exaggeration="3">
+<circuit-diagram runway="27" vertical-exaggeration="2">
   <circuit-path
     label="Standard circuit"
     color="#3b82f6cc"
@@ -72,7 +72,7 @@ The same data can be supplied programmatically via the element's `.paths` proper
   import 'https://unpkg.com/@open-aviation-solutions/components/dist/lib/define.es.js';
 </script>
 
-<circuit-diagram runway="27" vertical-exaggeration="3">
+<circuit-diagram runway="27" vertical-exaggeration="2">
   <circuit-path label="Standard circuit" color="#3b82f6cc"
     points="0,0,0; 700,0,0; 2000,0,175; 2000,-1000,305; -1500,-1000,305; -1500,0,180; 0,0,0">
   </circuit-path>
@@ -87,7 +87,7 @@ The same data can be supplied programmatically via the element's `.paths` proper
 | `runway` | `27` | Runway designator (drives the painted number and the runway heading) |
 | `runway-length` | `1500` | Runway length in metres |
 | `runway-width` | `30` | Runway width in metres |
-| `vertical-exaggeration` | `3` | Multiplier applied to altitude for display |
+| `vertical-exaggeration` | `2` | Multiplier applied to altitude for display |
 | `path-width` | `20` | Ribbon width in metres |
 | `corner-radius` | `100` | Corner fillet radius in metres (`0` for sharp corners) |
 | `wind-from` | runway heading | Direction in degrees the wind blows *from*; orients the windsock |
