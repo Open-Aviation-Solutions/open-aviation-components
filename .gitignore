@@ -2,7 +2,10 @@ dist/
 node_modules/
 .astro/
 .playwright-browsers/
-screenshots/
+# Repo-root scratch dir where `make screenshot` dumps captures. Anchored with a
+# leading slash so it does NOT also ignore docs/public/screenshots/, which holds
+# the tracked, deployed home-page card images.
+/screenshots/
 
 # Editor swap files
 *.swp
