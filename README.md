@@ -8,23 +8,30 @@ Interactive components for aviation training, implemented as standard web compon
 
 ## Components
 
-| Component | Purpose | Key props |
-|-----------|---------|-----------|
-| [FourForces](#fourforces) | 3D visualization of aerodynamic forces with physics model | `height`, `modelPath` |
+| Component | Tag | Purpose |
+|-----------|-----|---------|
+| [AerofoilDynamics](#aerofoildynamics) | `<aerofoil-dynamics>` | Real-time fluid simulation of airflow over a NACA aerofoil |
+| [BriefingOverview](#briefingoverview) | `<briefing-overview>` | SVG map of a flight briefing as a sequence of lesson topics |
+| [CircuitDiagram](#circuitdiagram) | `<circuit-diagram>` | 3D viewer for circuit-training procedures and joins |
+| [ClimbPerformance](#climbperformance) | `<climb-performance>` | Thrust/power vs airspeed charts showing Vx and Vy |
+| [FourForces](#fourforces) | `<four-forces>` | 3D visualization of the four aerodynamic forces |
+| [PitchRollYaw](#pitchrollyaw) | `<pitch-roll-yaw>` | 3D aircraft viewer for the three axes of flight |
 
 ---
 
-## FourForces
+## Installation
 
-An interactive 3D visualization of the four aerodynamic forces — Lift, Weight, Thrust, and Drag — shown as arrows on an aircraft model. Power and Attitude sliders drive a physics model; the arrows scale dynamically to reflect the force balance. Includes airspeed (ASI) and vertical speed (VSI) instrument gauges, airflow particle stream visualization, and weight-component decomposition during climbs.
+```
+npm install @open-aviation-solutions/components
+```
 
-### Peer dependencies
+The 3D components (FourForces, CircuitDiagram, PitchRollYaw) render with [Three.js](https://threejs.org/), which is a peer dependency:
 
 ```
 npm install three
 ```
 
-### Usage
+## Usage
 
 Import the package once (anywhere in your app's entry point) to register the custom elements, then use them as HTML tags:
 
@@ -33,22 +40,36 @@ import '@open-aviation-solutions/components'
 ```
 
 ```html
-<four-forces height="400px" model-path="/aircraft.glb"></four-forces>
+<four-forces height="400px"></four-forces>
 ```
 
-You will need to serve the `aircraft.glb` file as a static asset. A copy is included in the `public/` directory of this repository.
+Each component's supported attributes are documented on its page in the [live demo](https://open-aviation-solutions.github.io/open-aviation-components/).
 
-### Attributes
+---
 
-| Attribute | Default | Description |
-|-----------|---------|-------------|
-| `height` | `400px` | CSS height of the component |
-| `model-path` | `/aircraft.glb` | URL to the GLTF aircraft model served as a static asset |
-| `v_ne` | — | Never-exceed speed (kts). Sets ASI scale maximum and draws red radial line. |
-| `v_no` | — | Normal operating speed (kts). Top of green arc, bottom of yellow arc. |
-| `v_1` | — | Stall speed clean (kts). Bottom of green arc. |
-| `cruise-kts` | `100` | Airspeed at nominal cruise (speed=1.0). Calibrates the ASI needle. |
-| `banking` | — | Boolean. When present, shows a bank angle slider and lift-component decomposition. |
+## AerofoilDynamics
+
+A real-time lattice-Boltzmann (LBM) fluid simulation of airflow over an aerofoil. Choose a NACA 4-digit profile and adjust airspeed and angle of attack to watch the flow field, separation, and stall develop dynamically.
+
+## BriefingOverview
+
+A pure-SVG visualisation of a flight briefing as a sequence of lesson topics. Two runways (departure and arrival) are joined by a dashed flight path with numbered waypoints and segment times; an animated aircraft moves through the waypoints, recording actual elapsed time against the planned time. Topics are declared with `<briefing-topic>` child elements.
+
+## CircuitDiagram
+
+A 3D circuit / procedure viewer: a generic airfield with a single labelled runway, over which one or more flight paths are drawn as coloured, semi-transparent ribbons. Built to visualise and compare circuit-training procedures — standard circuit, joins, flapless, glide approach, short-field, go-around — with altitude vertically exaggerated so the circuit reads clearly.
+
+## ClimbPerformance
+
+Two side-by-side charts sharing a draggable cursor. The left chart plots thrust available against thrust required versus airspeed (excess thrust → angle of climb, marking Vx); the right chart plots power available against power required (excess power → rate of climb, marking Vy). A normalised physics model relates all speeds to the minimum-drag speed.
+
+## FourForces
+
+An interactive 3D visualization of the four aerodynamic forces — Lift, Weight, Thrust, and Drag — shown as arrows on an aircraft model. Power and Attitude sliders drive a physics model; the arrows scale dynamically to reflect the force balance. Includes airspeed (ASI) and vertical speed (VSI) instrument gauges, airflow particle stream visualization, and weight-component decomposition during climbs.
+
+## PitchRollYaw
+
+An interactive 3D aircraft viewer for introducing the three axes of flight and their rotational terminology — pitch, roll, and yaw. Sliders rotate the aircraft about its body axes and highlight the corresponding axis line, so mixed rotations compose the way they do in flight.
 
 ---
 
