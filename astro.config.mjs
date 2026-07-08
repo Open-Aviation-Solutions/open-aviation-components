@@ -57,6 +57,7 @@ export default defineConfig({
             { label: 'Briefing Overview', slug: 'briefing-overview' },
             { label: 'Circuit Diagram',   slug: 'circuit-diagram' },
             { label: 'Climb Performance', slug: 'climb-performance' },
+            { label: 'Crosswind Clock',   slug: 'crosswind-clock' },
             { label: 'Four Forces',       slug: 'four-forces' },
             { label: 'Pitch Roll Yaw',    slug: 'pitch-roll-yaw' },
           ],

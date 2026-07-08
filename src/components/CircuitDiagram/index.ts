@@ -6,6 +6,15 @@
 
 import styles from './index.css?inline'
 import { HELP_BASE_URL } from '../../config'
+import { parseColor } from '../shared/color'
+import { buildFlatGroundMesh, buildTerrainMesh, smoothstep } from '../shared/terrain'
+import { buildRunwayGroup, runwayHeadingFromDesignator } from '../shared/runway'
+import {
+  WINDSOCK_FULL_EXTENSION_SPEED,
+  buildWindsock,
+  windsockDroopAngle,
+} from '../shared/windsock'
+import { windsockYawRotation, worldWindToward } from '../shared/wind'
 import type * as THREE from 'three'
 import type { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 
@@ -51,20 +60,12 @@ const FLIGHT_MIN_MS = 9000
 const FLIGHT_MAX_MS = 45000
 /** Nominal airspeed (knots) used with `wind-speed` to compute the crab angle. */
 const DEFAULT_AIRSPEED = 90
-/** Wind speed (same unit as `wind-speed`) at which the windsock is fully horizontal. */
-const WINDSOCK_FULL_EXTENSION_SPEED = 30
 /** Windsock droop angle (radians) at calm (0 = horizontal). */
 const WINDSOCK_MAX_DROOP = (75 * Math.PI) / 180
 
 const PLAY_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2.5v11l9-5.5z"/></svg>'
 const PAUSE_ICON =
   '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="4" y="3" width="3.2" height="10" rx="1"/><rect x="8.8" y="3" width="3.2" height="10" rx="1"/></svg>'
-/** Plane subdivisions per side for the terrain mesh (resolution vs. cost). */
-const TERRAIN_SEGMENTS = 160
-/** Horizontal feature size of the base terrain noise, in metres. */
-const TERRAIN_FEATURE_SIZE = 900
-/** Surface height (world units) of carved water bodies. */
-const TERRAIN_WATER_LEVEL = -28
 
 /** A single waypoint, in the runway-centric data frame (metres). */
 type Waypoint = [x: number, y: number, alt: number]
@@ -120,27 +121,6 @@ interface PlaybackState {
   windRatio: number
 }
 
-/** Parse `#rrggbbaa` / `#rrggbb` / `rgba()` into a 24-bit colour + opacity. */
-function parseColor(raw: string): { hex: number; opacity: number } {
-  const trimmed = raw.trim()
-  const hexMatch = trimmed.match(/^#([0-9a-fA-F]{6})([0-9a-fA-F]{2})?$/)
-  if (hexMatch) {
-    const hex = parseInt(hexMatch[1], 16)
-    const opacity = hexMatch[2] === undefined ? 1 : parseInt(hexMatch[2], 16) / 255
-    return { hex, opacity }
-  }
-  const rgbaMatch = trimmed.match(/^rgba?\(([^)]+)\)$/)
-  if (rgbaMatch) {
-    const parts = rgbaMatch[1].split(',').map(part => parseFloat(part.trim()))
-    const [red, green, blue] = parts
-    const opacity = parts.length >= 4 ? parts[3] : 1
-    const hex = ((red & 0xff) << 16) | ((green & 0xff) << 8) | (blue & 0xff)
-    return { hex, opacity }
-  }
-  // Fallback: a neutral blue so an unparseable colour still renders.
-  return { hex: 0x3b82f6, opacity: 0.8 }
-}
-
 /** Parse a `points` attribute (`x,y,alt; x,y,alt; …`) into waypoints. */
 function parsePoints(raw: string): Waypoint[] {
   return raw
@@ -165,107 +145,6 @@ function parseSegmentLabels(raw: string): Record<number, string> {
     if (Number.isInteger(index) && text.length > 0) result[index] = text
   }
   return result
-}
-
-// ---- procedural terrain helpers ------------------------------------------
-// All deterministic: the same seed always yields the same landscape (no use of
-// Math.random), so embeds are stable and presenter/slide pairs stay in sync.
-
-/** Hash an arbitrary seed string into a 32-bit unsigned integer (xmur3). */
-function hashSeed(text: string): number {
-  let hash = 1779033703 ^ text.length
-  for (let index = 0; index < text.length; index++) {
-    hash = Math.imul(hash ^ text.charCodeAt(index), 3432918353)
-    hash = (hash << 13) | (hash >>> 19)
-  }
-  hash = Math.imul(hash ^ (hash >>> 16), 2246822507)
-  hash = Math.imul(hash ^ (hash >>> 13), 3266489909)
-  return (hash ^ (hash >>> 16)) >>> 0
-}
-
-/** Deterministic [0,1) hash of an integer grid cell, mixed with the seed. */
-function hashCell(cellX: number, cellZ: number, seed: number): number {
-  let hash = Math.imul(cellX | 0, 374761393) ^ Math.imul(cellZ | 0, 668265263) ^ seed
-  hash = Math.imul(hash ^ (hash >>> 13), 1274126177)
-  hash = (hash ^ (hash >>> 16)) >>> 0
-  return hash / 4294967296
-}
-
-const smootherStep = (t: number) => t * t * t * (t * (t * 6 - 15) + 10)
-const lerpScalar = (a: number, b: number, t: number) => a + (b - a) * t
-
-/** Smooth interpolation from 0 (at edge0) to 1 (at edge1). */
-function smoothstep(edge0: number, edge1: number, value: number): number {
-  const t = Math.min(1, Math.max(0, (value - edge0) / (edge1 - edge0)))
-  return t * t * (3 - 2 * t)
-}
-
-/** 2-D value noise in [-1, 1] for a continuous position, seeded. */
-function valueNoise(x: number, z: number, seed: number): number {
-  const cellX = Math.floor(x)
-  const cellZ = Math.floor(z)
-  const tx = smootherStep(x - cellX)
-  const tz = smootherStep(z - cellZ)
-  const v00 = hashCell(cellX, cellZ, seed)
-  const v10 = hashCell(cellX + 1, cellZ, seed)
-  const v01 = hashCell(cellX, cellZ + 1, seed)
-  const v11 = hashCell(cellX + 1, cellZ + 1, seed)
-  const top = lerpScalar(v00, v10, tx)
-  const bottom = lerpScalar(v01, v11, tx)
-  return lerpScalar(top, bottom, tz) * 2 - 1
-}
-
-/** Fractal Brownian motion: summed octaves of value noise, rotated per octave. */
-function fbm(x: number, z: number, seed: number, octaves: number): number {
-  let amplitude = 1
-  let sum = 0
-  let norm = 0
-  let sampleX = x
-  let sampleZ = z
-  for (let octave = 0; octave < octaves; octave++) {
-    sum += amplitude * valueNoise(sampleX, sampleZ, seed + octave * 1013)
-    norm += amplitude
-    amplitude *= 0.5
-    // Rotate (~10°) and scale (~1.97×) for the next octave to break up the
-    // axis-aligned look of raw value noise.
-    const rotatedX = sampleX * 1.94 + sampleZ * 0.34
-    const rotatedZ = -sampleX * 0.34 + sampleZ * 1.94
-    sampleX = rotatedX
-    sampleZ = rotatedZ
-  }
-  return sum / norm
-}
-
-/** Elevation → colour ramp anchors (world height → RGB 0–255). */
-const TERRAIN_RAMP: ReadonlyArray<{ height: number; color: [number, number, number] }> = [
-  { height: TERRAIN_WATER_LEVEL, color: [0x2a, 0x4d, 0x69] }, // water
-  { height: 4, color: [0x6e, 0x8c, 0x55] }, // shoreline / lowland
-  { height: 80, color: [0x4d, 0x70, 0x40] }, // grass / forest
-  { height: 230, color: [0x6d, 0x61, 0x4d] }, // rock
-  { height: 370, color: [0x8c, 0x84, 0x73] }, // high rock
-  { height: 520, color: [0xed, 0xf1, 0xf5] }, // snow
-]
-
-/** Sample the terrain colour ramp at a height, returned as linear-ish 0–1 RGB. */
-function rampColor(height: number): [number, number, number] {
-  if (height <= TERRAIN_RAMP[0].height) {
-    const [r, g, b] = TERRAIN_RAMP[0].color
-    return [r / 255, g / 255, b / 255]
-  }
-  for (let index = 1; index < TERRAIN_RAMP.length; index++) {
-    const upper = TERRAIN_RAMP[index]
-    if (height <= upper.height) {
-      const lower = TERRAIN_RAMP[index - 1]
-      const t = (height - lower.height) / (upper.height - lower.height)
-      return [
-        lerpScalar(lower.color[0], upper.color[0], t) / 255,
-        lerpScalar(lower.color[1], upper.color[1], t) / 255,
-        lerpScalar(lower.color[2], upper.color[2], t) / 255,
-      ]
-    }
-  }
-  const [r, g, b] = TERRAIN_RAMP[TERRAIN_RAMP.length - 1].color
-  return [r / 255, g / 255, b / 255]
 }
 
 class CircuitDiagramElement extends HTMLElement {
@@ -476,9 +355,7 @@ class CircuitDiagramElement extends HTMLElement {
 
   /** Compass heading the runway points toward (e.g. "27" → 270°). */
   private get _runwayHeading(): number {
-    const leading = this._runwayDesignator.match(/\d+/)
-    const designator = leading ? parseInt(leading[0], 10) : 27
-    return ((designator * 10) % 360 + 360) % 360
+    return runwayHeadingFromDesignator(this._runwayDesignator)
   }
 
   /** Wind direction in degrees the wind blows *from*; defaults to into-wind landing. */
@@ -498,16 +375,9 @@ class CircuitDiagramElement extends HTMLElement {
     return this._numberAttr('airspeed', DEFAULT_AIRSPEED)
   }
 
-  /**
-   * Unit horizontal vector for the direction the wind blows *toward*, in world
-   * space. Uses the verified bearing→world mapping: bearing `runwayHeading` is
-   * `+x`, and each degree clockwise rotates `(cos Δ, 0, sin Δ)` with
-   * `Δ = bearing − runwayHeading`.
-   */
+  /** Unit horizontal vector for the direction the wind blows *toward*, in world space. */
   private _worldWindToward(): THREE.Vector3 {
-    const THREE = this._THREE!
-    const delta = (this._windFrom + 180 - this._runwayHeading) * (Math.PI / 180)
-    return new THREE.Vector3(Math.cos(delta), 0, Math.sin(delta))
+    return worldWindToward(this._THREE!, this._windFrom, this._runwayHeading)
   }
 
   /**
@@ -679,10 +549,7 @@ class CircuitDiagramElement extends HTMLElement {
 
     if (!this._boolAttr('show-terrain')) {
       // Clean diagram: a plain flat green plane, no hills.
-      const geometry = new THREE.PlaneGeometry(span, span)
-      const material = new THREE.MeshLambertMaterial({ color: 0x4b7a4b })
-      const ground = new THREE.Mesh(geometry, material)
-      ground.rotation.x = -Math.PI / 2
+      const ground = buildFlatGroundMesh(THREE, span)
       ground.position.y = -0.5
       group.add(ground)
       this._scene!.add(group)
@@ -690,46 +557,17 @@ class CircuitDiagramElement extends HTMLElement {
       return
     }
 
-    const geometry = new THREE.PlaneGeometry(span, span, TERRAIN_SEGMENTS, TERRAIN_SEGMENTS)
-    geometry.rotateX(-Math.PI / 2) // lie flat: vertices now span world X/Z, normal +y
-
-    const seed = hashSeed(this.getAttribute('terrain-seed') || DEFAULT_TERRAIN_SEED)
-    const roughness = this._numberAttr('terrain-roughness', DEFAULT_TERRAIN_ROUGHNESS)
+    // Flat clearing out to innerRadius, ramping to full terrain by outerRadius.
     const { centerX, centerZ, radius } = this._fieldClearing()
-
-    // Flat clearing out to innerRadius, ramping to full terrain by outerRadius;
-    // gentle hills near the field grow into mountains by farRadius.
     const innerRadius = radius + this._runwayLength * 0.4
     const outerRadius = innerRadius + this._runwayLength * 1.4
-    const farRadius = span * 0.48
-    const gentleAmplitude = 70 * roughness
-    const mountainAmplitude = 620 * roughness
 
-    const position = geometry.attributes.position as THREE.BufferAttribute
-    const colors: number[] = []
-    for (let index = 0; index < position.count; index++) {
-      const x = position.getX(index)
-      const z = position.getZ(index)
-      const distance = Math.hypot(x - centerX, z - centerZ)
-
-      const noise = fbm(x / TERRAIN_FEATURE_SIZE, z / TERRAIN_FEATURE_SIZE, seed, 5)
-      const distantness = smoothstep(outerRadius, farRadius, distance)
-      const amplitude = lerpScalar(gentleAmplitude, mountainAmplitude, distantness)
-      // Lift distant ground a little so mountains mostly rise above the plain.
-      let height = noise * amplitude + distantness * 60
-      height *= smoothstep(innerRadius, outerRadius, distance) // flatten the clearing
-      if (height < TERRAIN_WATER_LEVEL) height = TERRAIN_WATER_LEVEL // carve flat lakes
-
-      position.setY(index, height)
-      const [r, g, b] = rampColor(height)
-      colors.push(r, g, b)
-    }
-    position.needsUpdate = true
-    geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3))
-    geometry.computeVertexNormals()
-
-    const material = new THREE.MeshLambertMaterial({ vertexColors: true })
-    const ground = new THREE.Mesh(geometry, material)
+    const ground = buildTerrainMesh(THREE, {
+      span,
+      seedText: this.getAttribute('terrain-seed') || DEFAULT_TERRAIN_SEED,
+      roughness: this._numberAttr('terrain-roughness', DEFAULT_TERRAIN_ROUGHNESS),
+      clearing: { centerX, centerZ, innerRadius, outerRadius },
+    })
     ground.position.y = -0.5 // just below the runway to avoid z-fighting
     group.add(ground)
     this._scene!.add(group)
@@ -749,111 +587,25 @@ class CircuitDiagramElement extends HTMLElement {
   }
 
   private _buildRunway(THREE: typeof import('three')) {
-    const group = new THREE.Group()
-    const length = this._runwayLength
-    const width = this._runwayWidth
-
-    // Runway surface — extends from the threshold (x = 0) toward the rollout (+x).
-    const surfaceGeometry = new THREE.PlaneGeometry(length, width)
-    const surfaceMaterial = new THREE.MeshLambertMaterial({ color: 0x3a3a3f })
-    const surface = new THREE.Mesh(surfaceGeometry, surfaceMaterial)
-    surface.rotation.x = -Math.PI / 2
-    surface.position.set(length / 2, 0, 0)
-    group.add(surface)
-
-    // Dashed white centreline, slightly above the surface.
-    const dashLength = 30
-    const gapLength = 20
-    const centrelineMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff })
-    for (let x = dashLength; x < length - dashLength; x += dashLength + gapLength) {
-      const dash = new THREE.Mesh(new THREE.PlaneGeometry(dashLength, width * 0.04), centrelineMaterial)
-      dash.rotation.x = -Math.PI / 2
-      dash.position.set(x + dashLength / 2, 0.1, 0)
-      group.add(dash)
-    }
-
-    // Threshold markings at both ends: "piano keys" (longitudinal white bars
-    // across the width) followed, further in, by the runway designator. The
-    // x = 0 end carries the named runway (landing toward +x); the far end
-    // carries its reciprocal (landing toward -x).
-    const designatorSize = Math.min(width * 0.9, length * 0.12)
-    const keyInset = length * 0.015
-    const keyLength = Math.min(length * 0.05, 80)
-    const numberGap = length * 0.02
-
-    const parsed = this._runwayDesignator.match(/^\s*(\d{1,2})\s*([LCRlcr]?)/)
-    const primaryNumber = parsed ? Math.min(Math.max(parseInt(parsed[1], 10), 1), 36) : 27
-    const primarySuffix = parsed ? parsed[2].toUpperCase() : ''
-    const reciprocalNumber = ((primaryNumber + 18 - 1) % 36) + 1
-    const reciprocalSuffix =
-      primarySuffix === 'L' ? 'R' : primarySuffix === 'R' ? 'L' : primarySuffix
-    const formatDesignator = (number: number, suffix: string) =>
-      String(number).padStart(2, '0') + suffix
-
-    const ends = [
-      { thresholdX: 0, inward: 1, text: formatDesignator(primaryNumber, primarySuffix) },
-      { thresholdX: length, inward: -1, text: formatDesignator(reciprocalNumber, reciprocalSuffix) },
-    ]
-
-    for (const end of ends) {
-      // Piano-key threshold stripes.
-      const stripeCount = 8
-      const stripeSpan = width * 0.85
-      const stripeUnit = stripeSpan / (stripeCount * 2 - 1) // equal stripe + gap widths
-      const keysCenterX = end.thresholdX + end.inward * (keyInset + keyLength / 2)
-      for (let stripe = 0; stripe < stripeCount; stripe++) {
-        const z = -stripeSpan / 2 + stripeUnit / 2 + stripe * 2 * stripeUnit
-        const key = new THREE.Mesh(new THREE.PlaneGeometry(keyLength, stripeUnit), centrelineMaterial)
-        key.rotation.x = -Math.PI / 2
-        key.position.set(keysCenterX, 0.1, z)
-        group.add(key)
-      }
-
-      // Runway designator, sized to sit within the pavement.
-      const designatorTexture = this._makeTextTexture(THREE, end.text, '#ffffff', null)
-      const designator = new THREE.Mesh(
-        new THREE.PlaneGeometry(designatorSize, designatorSize),
-        new THREE.MeshBasicMaterial({ map: designatorTexture, transparent: true })
-      )
-      designator.rotation.x = -Math.PI / 2
-      // Top of the digits points down the runway (toward the far end), so the
-      // number reads upright to a pilot standing at this threshold.
-      designator.rotation.z = end.inward > 0 ? -Math.PI / 2 : Math.PI / 2
-      const numberCenterX =
-        end.thresholdX + end.inward * (keyInset + keyLength + numberGap + designatorSize / 2)
-      designator.position.set(numberCenterX, 0.12, 0)
-      group.add(designator)
-    }
-
+    const group = buildRunwayGroup(THREE, {
+      length: this._runwayLength,
+      width: this._runwayWidth,
+      designator: this._runwayDesignator,
+    })
     this._scene!.add(group)
     this._runwayGroup = group
   }
 
   private _buildWindsock(THREE: typeof import('three')) {
-    const group = new THREE.Group()
-
     // Larger-than-life so it reads from the orbit camera. The pole is tall enough
     // that the sock clears the ground even when fully drooped (calm).
-    const poleHeight = 90
-    const sockLength = 70
-    const sockMouthRadius = 14
-    const sockTailRadius = 5
-
-    const poleMaterial = new THREE.MeshLambertMaterial({ color: 0xd0d0d0 })
-    const pole = new THREE.Mesh(new THREE.CylinderGeometry(2, 2, poleHeight, 8), poleMaterial)
-    pole.position.y = poleHeight / 2
-    group.add(pole)
-
-    // Sock built pointing along +x from the origin (its mouth), so the pivot at
-    // the pole top can droop it downward for lighter winds.
-    const sockGeometry = new THREE.CylinderGeometry(sockTailRadius, sockMouthRadius, sockLength, 16, 1, true)
-    sockGeometry.rotateZ(-Math.PI / 2) // axis from +y to +x
-    sockGeometry.translate(sockLength / 2, 0, 0)
-    const sockMaterial = new THREE.MeshLambertMaterial({
-      color: 0xff7a1a,
-      side: THREE.DoubleSide,
+    const { group, sockPivot } = buildWindsock(THREE, {
+      poleHeight: 90,
+      poleRadius: 2,
+      sockLength: 70,
+      sockMouthRadius: 14,
+      sockTailRadius: 5,
     })
-    const sock = new THREE.Mesh(sockGeometry, sockMaterial)
 
     // Droop reflects wind strength: horizontal at/above the full-extension speed,
     // hanging progressively lower as the wind eases. An unset `wind-speed` shows a
@@ -863,20 +615,10 @@ class CircuitDiagramElement extends HTMLElement {
       windSpeedAttr !== null && Number.isFinite(parseFloat(windSpeedAttr))
         ? this._windSpeed
         : WINDSOCK_FULL_EXTENSION_SPEED
-    const extension = Math.min(displaySpeed / WINDSOCK_FULL_EXTENSION_SPEED, 1)
-    const sockPivot = new THREE.Group()
-    sockPivot.position.set(0, poleHeight, 0)
-    sockPivot.rotation.z = -(1 - extension) * WINDSOCK_MAX_DROOP // tip swings down
-    sockPivot.add(sock)
-    group.add(sockPivot)
+    sockPivot.rotation.z = -windsockDroopAngle(displaySpeed, WINDSOCK_MAX_DROOP) // tip swings down
 
     // The sock flies downwind: bearing the wind blows toward = windFrom + 180.
-    // Rotate from +x (landing direction) by the bearing offset about world up.
-    // The offset is negated because compass bearings increase clockwise while a
-    // positive rotation about +y is anticlockwise (looking down) — so +z reads as
-    // north and the sock points to the true downwind side.
-    const windTo = this._windFrom + 180
-    group.rotation.y = -(windTo - this._runwayHeading) * (Math.PI / 180)
+    group.rotation.y = windsockYawRotation(this._windFrom, this._runwayHeading)
 
     // Place it beside the runway near the threshold.
     group.position.set(this._runwayLength * 0.08, 0, this._runwayWidth / 2 + 60)
@@ -1074,32 +816,6 @@ class CircuitDiagramElement extends HTMLElement {
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
     geometry.setIndex(indices)
     return geometry
-  }
-
-  /** A canvas-textured texture for flat-on-runway labels (no background). */
-  private _makeTextTexture(
-    THREE: typeof import('three'),
-    text: string,
-    color: string,
-    background: string | null
-  ): THREE.CanvasTexture {
-    const canvas = document.createElement('canvas')
-    canvas.width = 256
-    canvas.height = 256
-    const context = canvas.getContext('2d')!
-    if (background) {
-      context.fillStyle = background
-      context.fillRect(0, 0, canvas.width, canvas.height)
-    }
-    context.fillStyle = color
-    context.font = 'bold 140px sans-serif'
-    context.textAlign = 'center'
-    context.textBaseline = 'middle'
-    context.fillText(text, canvas.width / 2, canvas.height / 2)
-    const texture = new THREE.CanvasTexture(canvas)
-    texture.colorSpace = THREE.SRGBColorSpace
-    texture.anisotropy = 4
-    return texture
   }
 
   /** A billboarded label sprite (canvas texture) sized in world units. */

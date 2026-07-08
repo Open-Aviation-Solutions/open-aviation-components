@@ -14,6 +14,7 @@ Interactive components for aviation training, implemented as standard web compon
 | [BriefingOverview](#briefingoverview) | `<briefing-overview>` | SVG map of a flight briefing as a sequence of lesson topics |
 | [CircuitDiagram](#circuitdiagram) | `<circuit-diagram>` | 3D viewer for circuit-training procedures and joins |
 | [ClimbPerformance](#climbperformance) | `<climb-performance>` | Thrust/power vs airspeed charts showing Vx and Vy |
+| [CrosswindClock](#crosswindclock) | `<crosswind-clock>` | Windsock + clock-code crosswind estimator with live sin comparison |
 | [FourForces](#fourforces) | `<four-forces>` | 3D visualization of the four aerodynamic forces |
 | [PitchRollYaw](#pitchrollyaw) | `<pitch-roll-yaw>` | 3D aircraft viewer for the three axes of flight |
 
@@ -62,6 +63,10 @@ A 3D circuit / procedure viewer: a generic airfield with a single labelled runwa
 ## ClimbPerformance
 
 Two side-by-side charts sharing a draggable cursor. The left chart plots thrust available against thrust required versus airspeed (excess thrust → angle of climb, marking Vx); the right chart plots power available against power required (excess power → rate of climb, marking Vy). A normalised physics model relates all speeds to the minimum-drag speed.
+
+## CrosswindClock
+
+A ground-level windsock viewed from a person standing beside the runway, paired with the **clock code** for estimating crosswind. Set the wind strength and direction with the on-screen dial and slider; the windsock swings downwind and droops with the wind strength (calibrated to a real windsock chart). A clock face fills to show the angle off the runway read as minutes, and a readout compares the clock-code estimate against the exact `sin` value in both percent and knots.
 
 ## FourForces
 
