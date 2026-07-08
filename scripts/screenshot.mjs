@@ -19,6 +19,7 @@ const BASE = '/open-aviation-components'
 // WebGL canvas included).
 const TARGETS = [
   { slug: 'circuit-diagram', selector: 'circuit-diagram', file: 'circuit-diagram.png' },
+  { slug: 'crosswind-clock', selector: 'crosswind-clock', file: 'crosswind-clock.png' },
 ]
 
 const outputDir = new URL('../screenshots/', import.meta.url)
@@ -112,6 +113,23 @@ try {
         host?._startPlayback?.(0, false)
       }, target.selector)
       await page.waitForTimeout(4000)
+    }
+
+    // Optional crosswind-clock camera override, for tuning the standing view
+    // without rebuilding: CROSSWIND_CAM="px,py,pz,tx,ty,tz".
+    if (process.env.CROSSWIND_CAM) {
+      await page.evaluate(([selector, cam]) => {
+        const host = document.querySelector(selector)
+        const camera = host?._camera
+        const controls = host?._orbitControls
+        if (!camera || !controls) return
+        const [px, py, pz, tx, ty, tz] = cam.split(',').map(Number)
+        controls.enableDamping = false
+        camera.position.set(px, py, pz)
+        controls.target.set(tx, ty, tz)
+        controls.update()
+      }, [target.selector, process.env.CROSSWIND_CAM])
+      await page.waitForTimeout(600)
     }
 
     const viewSuffix = topDown ? '-top' : runwayView ? '-runway' : flyView ? '-fly' : ''
