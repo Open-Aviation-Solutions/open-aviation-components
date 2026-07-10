@@ -15,6 +15,8 @@ export interface WindsockDimensions {
   sockLength: number
   sockMouthRadius: number
   sockTailRadius: number
+  /** Sock colour as a THREE-compatible hex number. Defaults to white. */
+  sockColor?: number
 }
 
 export interface WindsockParts {
@@ -43,7 +45,7 @@ export function windsockDroopAngle(
 }
 
 /**
- * Build a windsock: a pole with a single-colour orange tapered sock hanging
+ * Build a windsock: a pole with a single-colour (default white) tapered sock hanging
  * from a pivot at the pole top. The sock is built pointing along +x from its
  * mouth at the pivot, so the caller can droop it (`sockPivot.rotation.z`) and
  * point it downwind (`group.rotation.y`). The caller adds the group to the
@@ -53,7 +55,14 @@ export function buildWindsock(
   THREE: typeof import('three'),
   dimensions: WindsockDimensions
 ): WindsockParts {
-  const { poleHeight, poleRadius, sockLength, sockMouthRadius, sockTailRadius } = dimensions
+  const {
+    poleHeight,
+    poleRadius,
+    sockLength,
+    sockMouthRadius,
+    sockTailRadius,
+    sockColor = 0xffffff,
+  } = dimensions
   const group = new THREE.Group()
 
   const poleMaterial = new THREE.MeshLambertMaterial({ color: 0xd0d0d0 })
@@ -77,7 +86,7 @@ export function buildWindsock(
   sockGeometry.rotateZ(-Math.PI / 2) // axis from +y to +x
   sockGeometry.translate(sockLength / 2, 0, 0)
   const sockMaterial = new THREE.MeshLambertMaterial({
-    color: 0xff7a1a,
+    color: sockColor,
     side: THREE.DoubleSide,
   })
   const sock = new THREE.Mesh(sockGeometry, sockMaterial)

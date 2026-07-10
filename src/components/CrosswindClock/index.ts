@@ -74,6 +74,7 @@ class CrosswindClockElement extends HTMLElement {
     'runway-width',
     'wind-from',
     'wind-speed',
+    'windsock-color',
     'show-controls',
     'show-clock',
     'show-terrain',
@@ -377,6 +378,12 @@ class CrosswindClockElement extends HTMLElement {
     return Number.isFinite(value) && value >= 0 ? value : DEFAULT_WIND_SPEED
   }
 
+  /** Sock colour (hex number); defaults to white. */
+  private get _windsockColor(): number {
+    const raw = this.getAttribute('windsock-color')
+    return raw ? parseColor(raw).hex : 0xffffff
+  }
+
   // ---- render loop lifecycle --------------------------------------------
 
   private _pauseLoop() {
@@ -541,6 +548,7 @@ class CrosswindClockElement extends HTMLElement {
       sockLength: 3.6,
       sockMouthRadius: 0.9,
       sockTailRadius: 0.3,
+      sockColor: this._windsockColor,
     })
     this._sockPivot = sockPivot
 
