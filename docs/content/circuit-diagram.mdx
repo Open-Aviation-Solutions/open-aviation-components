@@ -10,7 +10,9 @@ import ComponentDescription from '../components/ComponentDescription.astro'
 
 Circuit briefings spend a lot of time on geometry that is hard to draw on a whiteboard: where the turns happen, how high you should be on each leg, and how one procedure differs from another against the same runway. A flat plan view loses the altitudes; a side view loses the ground track. This tool keeps both — an orbitable 3D airfield where each procedure is a coloured ribbon following its own track and climb profile.
 
-Drag to orbit, scroll to zoom. Use the legend (top-left) to show or hide individual procedures so you can study one in isolation or overlay them for comparison. Click the **play** button next to a procedure to fly the camera along that track — it loops, and you can **pause** to look around and discuss a particular point, then resume from the same spot.
+Drag to orbit, scroll to zoom. Use the legend (top-left) to show or hide individual procedures so you can study one in isolation or overlay them for comparison. Click the **play** button next to a procedure to fly the camera along that track — it loops, and you can **pause** to look around and discuss a particular point, then resume from the same spot. While flying, a dashed line projects straight ahead of the nose so you can see where it meets the ground on descent, and a mini windsock in the bottom-right corner always shows the wind relative to your current view.
+
+If you place several *different* circuit diagrams on one page, each is independent — orbiting or flying one won't move the others. Genuine copies of the *same* example (for example a presenter view and a projected slide) still sync; give them a matching `sync-group` if you want to pair copies explicitly.
 
 <CircuitDiagram />
 
@@ -91,9 +93,13 @@ The same data can be supplied programmatically via the element's `.paths` proper
 | `path-width` | `20` | Ribbon width in metres |
 | `corner-radius` | `100` | Corner fillet radius in metres (`0` for sharp corners) |
 | `wind-from` | runway heading | Direction in degrees the wind blows *from*; orients the windsock |
+| `windsock-color` | white | Windsock colour (`#rrggbb`, `#rrggbbaa`, or `rgba(...)`); also colours the inset sock |
 | `show-windsock` | `true` | Set to `"false"` to hide the windsock |
 | `show-grid` | `true` | Set to `"false"` to hide the ground distance grid |
 | `show-legend` | `true` | Set to `"false"` to hide the clickable legend |
+| `show-aim-line` | `true` | Set to `"false"` to hide the dashed nose-forward aiming line shown while flying a track |
+| `show-wind-indicator` | `true` | Set to `"false"` to hide the mini windsock inset (bottom-right) that always shows the wind relative to your view |
+| `sync-group` | — | Give paired copies of the *same* example (e.g. a presenter and a slide) a matching value to sync them. Different examples on one page stay independent automatically |
 | `show-help` | — | Set to `"false"` to hide the in-component help (?) link |
 
 ## Dependencies

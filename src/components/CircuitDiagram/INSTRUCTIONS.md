@@ -118,10 +118,39 @@ but only ~300 m high and would otherwise look flat.
   `FLIGHT_SPEED`, wind to `FLIGHT_SPEED × windRatio`), and stores the normalised
   cumulative travel time as `timeFractions`; `_positionAtTime()` looks up the
   position by time. With no wind `g = FLIGHT_SPEED` everywhere (unchanged pacing).
-- **BroadcastChannel** (`circuit-diagram-sync`) — syncs camera position, per-path
-  visibility toggles, and flythrough play/pause/resume across tabs for
+- **Aiming line** — while a flight is in its `fly` phase, `_updateAimLine()` shows
+  a thin dashed tube along the nose (the camera's forward direction). The tube is a
+  unit cylinder (radius `AIM_LINE_RADIUS`) re-oriented/stretched each frame; dashes
+  come from a repeating alpha map along its length (tile count set from the length
+  so the dash size stays constant in world units), `depthTest: false` so it reads
+  over the terrain. Its axis starts `AIM_LINE_DROP` below the eye — offset along
+  the pilot's "down" (perpendicular to the view) so it reads as coming out of the
+  aircraft beneath you rather than down the bore; keep `AIM_LINE_DROP >
+  AIM_LINE_RADIUS` or the eye sits inside the tube. The drawn span begins
+  `AIM_LINE_NEAR` ahead (so the near end never envelops the camera) and runs to
+  where the nose meets the ground (`forward.y < 0`), with a ground ring marking the
+  intercept (the aiming point on final). Level/climbing, it extends `AIM_LINE_MAX`
+  ahead with no marker. The tube + marker persist across rebuilds
+  (geometry-independent), are hidden outside the fly phase, and are gated by
+  `show-aim-line`.
+- **Windsock inset** — a persistent wind reference so the sock reads even when the
+  main one is off-screen. A second scene (`_insetScene`) holds a copy of the
+  windsock (same droop + yaw as the main one, rebuilt with it in
+  `_buildInsetWindsock`) and is rendered by `_renderInset()` into a bottom-right
+  scissor viewport after the main render. `_updateInsetCamera()` aims the inset
+  camera from the current view azimuth at a fixed elevation, so the sock rotates
+  to show the wind relative to whatever you're looking at while staying legible.
+  An HTML frame (`.cd-wind-inset`) draws the border + "WIND" caption over it.
+  Gated by `show-wind-indicator`.
+- **BroadcastChannel** (`circuit-diagram-sync:<key>`) — syncs camera position,
+  per-path visibility toggles, and flythrough play/pause/resume across tabs for
   presenter/slide pairing (remote camera is ignored while actively flying, but
-  followed while paused).
+  followed while paused). The `<key>` scopes the channel so **different examples
+  on a page stay independent**: an explicit `sync-group` is used verbatim,
+  otherwise the key is a `hashSeed()` of the example's identity (paths + geometry
+  + wind attributes), so genuine copies of the *same* example auto-pair while
+  distinct examples don't cross-talk. `_refreshBroadcastChannel()` reopens the
+  channel when that identity (or `sync-group`) changes.
 - **Lifecycle** — `IntersectionObserver` pauses/resumes the render loop
   off-screen; `ResizeObserver` keeps the renderer sized; `_teardown()` disposes
   all geometries, materials, textures, controls, and the renderer.
@@ -147,6 +176,7 @@ optional `segment-labels`.
 | `wind-from` | runway heading | Direction in degrees the wind blows *from*; orients the windsock and the flythrough crab |
 | `wind-speed` | `0` | Wind speed (paired with `airspeed`); drives the flythrough crab angle (`0` = no crab) and the windsock droop (unset = fully extended) |
 | `airspeed` | `90` | Nominal airspeed (same unit as `wind-speed`) for the crab calculation |
+| `windsock-color` | white | Sock colour (`#rrggbb`/`#rrggbbaa`/`rgba(...)`); applies to both the main sock and the inset |
 | `show-windsock` | `true` | Show the larger-than-life windsock (`false` hides) |
 | `show-curtains` | `true` | Show the vertical curtain under each path centreline (`false` hides) |
 | `show-terrain` | `true` | Generate the procedural landscape (`false` = plain flat green plane) |
@@ -155,4 +185,7 @@ optional `segment-labels`.
 | `sky-color` | `#9ec9e8` | Scene background (sky) colour |
 | `show-grid` | `false` | Show the faint ground distance grid (debug overlay; `true` shows) |
 | `show-legend` | `true` | Show the clickable legend overlay (`false` hides) |
+| `show-aim-line` | `true` | Show the dashed nose-forward aiming line during the flythrough (`false` hides) |
+| `show-wind-indicator` | `true` | Show the mini windsock inset (bottom-right) that tracks the current view (`false` hides) |
+| `sync-group` | — | Explicit cross-tab sync group; instances sharing a value pair up. Unset, identical examples auto-pair via a content hash and different examples stay independent |
 | `show-help` | — | Set to `false` to hide the in-component help (?) link |

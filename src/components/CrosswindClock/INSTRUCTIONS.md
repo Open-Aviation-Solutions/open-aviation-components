@@ -27,8 +27,8 @@ ground view, unlike `<circuit-diagram>`):
   `src/components/shared/` (`terrain.ts`, `runway.ts`, `windsock.ts`,
   `wind.ts`, `color.ts`), the same modules `<circuit-diagram>` uses, so the
   landscape and windsock stay consistent between the two components.
-- **Windsock** — a rigid single-colour orange sock (modern Australian style) on
-  a realistic-scale pole. Direction and droop are **eased** toward the set wind
+- **Windsock** — a rigid single-colour sock (white by default, settable via
+  `windsock-color`) on a realistic-scale pole. Direction and droop are **eased** toward the set wind
   each frame (shortest-path yaw), with a subtle time-based **idle flutter** whose
   amplitude/frequency grow with wind strength (gusty at high wind, lazy sway when
   calm). Deterministic (no `Math.random`).
@@ -75,6 +75,7 @@ updates the sock/clock and broadcasts to paired tabs.
 | `runway-width` | `30` | Runway width in metres |
 | `wind-from` | runway heading | Initial wind direction in degrees (blowing *from*); the dial takes over after load |
 | `wind-speed` | `10` | Initial wind strength in knots; the slider takes over after load |
+| `windsock-color` | white | Sock colour (`#rrggbb`/`#rrggbbaa`/`rgba(...)`) |
 | `show-controls` | `true` | Show the wind controls (direction dial + strength slider) |
 | `show-clock` | `true` | Show the clock face + comparison readout |
 | `show-terrain` | `true` | Generate the procedural landscape (`false` = plain flat green plane) |

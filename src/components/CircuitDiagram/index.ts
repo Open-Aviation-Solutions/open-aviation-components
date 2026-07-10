@@ -7,7 +7,7 @@
 import styles from './index.css?inline'
 import { HELP_BASE_URL } from '../../config'
 import { parseColor } from '../shared/color'
-import { buildFlatGroundMesh, buildTerrainMesh, smoothstep } from '../shared/terrain'
+import { buildFlatGroundMesh, buildTerrainMesh, hashSeed, smoothstep } from '../shared/terrain'
 import { buildRunwayGroup, runwayHeadingFromDesignator } from '../shared/runway'
 import {
   WINDSOCK_FULL_EXTENSION_SPEED,
@@ -62,6 +62,50 @@ const FLIGHT_MAX_MS = 45000
 const DEFAULT_AIRSPEED = 90
 /** Windsock droop angle (radians) at calm (0 = horizontal). */
 const WINDSOCK_MAX_DROOP = (75 * Math.PI) / 180
+
+// ---- nose-forward aiming line (shown only while flying) -------------------
+/** Drop (world units) below the eye the aiming line starts from, so it reads as
+ * coming out of the aircraft beneath the pilot rather than from the eye itself.
+ * Offset along the pilot's "down" (perpendicular to the view) so the line sits
+ * clearly below the sightline instead of collapsing onto it. */
+// The tube sits below the sightline only while the drop exceeds its radius —
+// otherwise the eye is inside the bore and you look straight down it. Keep
+// AIM_LINE_DROP > AIM_LINE_RADIUS.
+const AIM_LINE_DROP = 1.8
+/** Clearance (world units) ahead of the origin where the drawn tube begins.
+ * With the thin tube well below the sightline (AIM_LINE_DROP ≫ AIM_LINE_RADIUS)
+ * the eye is never inside the bore, so this can be 0 — the tube then reaches
+ * right back to directly beneath the camera. */
+const AIM_LINE_NEAR = 0
+/** Maximum length (world units) of the aiming line when it doesn't meet the
+ * ground (level or climbing), so it reads out toward the horizon without
+ * running to infinity. */
+const AIM_LINE_MAX = 6000
+/** Radius (world units) of the aiming-line tube. */
+const AIM_LINE_RADIUS = 0.2
+/** Colour of the aiming-line tube + its ground ring (a warm yellow that stands
+ * out against sky, terrain and runway alike). */
+const AIM_LINE_COLOR = 0xffd400
+/** Dash + gap size (world units) of the aiming line — a 2:1 dash:gap ratio, kept
+ * short so no single gap is large enough to hide the near end of the tube right
+ * at the camera. */
+const AIM_LINE_DASH = 4
+const AIM_LINE_GAP = 2
+/** Set false to render the aiming line as a solid tube (no dashes). */
+const AIM_LINE_DASHED = true
+
+// ---- mini windsock inset (persistent wind reference) ----------------------
+/** Fixed elevation (degrees) the inset camera looks down on the sock from, so
+ * the sock stays legible while its azimuth follows the main view. */
+const INSET_CAM_ELEVATION_DEG = 22
+/** Distance (world units) of the inset camera from the sock. */
+const INSET_CAM_DISTANCE = 260
+/** Inset box as a fraction of the canvas width, clamped to a pixel range. */
+const INSET_SIZE_FRACTION = 0.22
+const INSET_SIZE_MIN = 96
+const INSET_SIZE_MAX = 150
+/** Margin (CSS px) of the inset box from the canvas edges. */
+const INSET_MARGIN = 10
 
 const PLAY_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2.5v11l9-5.5z"/></svg>'
 const PAUSE_ICON =
@@ -158,6 +202,7 @@ class CircuitDiagramElement extends HTMLElement {
     'corner-radius',
     'wind-from',
     'wind-speed',
+    'windsock-color',
     'show-windsock',
     'show-curtains',
     'show-grid',
@@ -167,6 +212,9 @@ class CircuitDiagramElement extends HTMLElement {
     'sky-color',
     'show-legend',
     'show-help',
+    'show-aim-line',
+    'show-wind-indicator',
+    'sync-group',
   ]
 
   // DOM references
@@ -188,6 +236,8 @@ class CircuitDiagramElement extends HTMLElement {
   private _resizeObserver: ResizeObserver | null = null
   private _intersectionObserver: IntersectionObserver | null = null
   private _broadcastChannel: BroadcastChannel | null = null
+  /** Name of the currently open broadcast channel (so we only reopen on change). */
+  private _broadcastChannelName: string | null = null
 
   // Scene content groups (rebuilt when geometry-affecting attributes change)
   private _terrainGroup: THREE.Group | null = null
@@ -195,6 +245,20 @@ class CircuitDiagramElement extends HTMLElement {
   private _windsockGroup: THREE.Group | null = null
   private _gridHelper: THREE.GridHelper | null = null
   private _pathObjects: PathObjects[] = []
+
+  // Nose-forward aiming line (shown only while flying); persists across rebuilds.
+  // A thin dashed tube (a stretched/oriented cylinder with a repeating alpha map).
+  private _aimLine: THREE.Mesh | null = null
+  private _aimMarker: THREE.Mesh | null = null
+
+  // Mini windsock inset: a second scene rendered into a corner viewport. The
+  // scene, camera and frame persist; only the windsock group is rebuilt with wind.
+  private _insetScene: THREE.Scene | null = null
+  private _insetCamera: THREE.PerspectiveCamera | null = null
+  private _insetWindsockGroup: THREE.Group | null = null
+  private _windInsetFrameEl: HTMLDivElement | null = null
+  /** Last horizontal view azimuth, reused when the camera looks straight down. */
+  private _insetAzimuth = 0
 
   // Scene state
   private _sceneReady = false
@@ -236,6 +300,18 @@ class CircuitDiagramElement extends HTMLElement {
     legend.style.display = 'none'
     this._legendEl = legend
     root.appendChild(legend)
+
+    // Frame + caption drawn over the WebGL wind-indicator inset (the sock itself
+    // is rendered into a corner viewport by the renderer; this is just chrome).
+    const windInsetFrame = document.createElement('div')
+    windInsetFrame.className = 'cd-wind-inset'
+    windInsetFrame.style.display = 'none'
+    const windInsetLabel = document.createElement('span')
+    windInsetLabel.className = 'cd-wind-inset-label'
+    windInsetLabel.textContent = 'WIND'
+    windInsetFrame.appendChild(windInsetLabel)
+    this._windInsetFrameEl = windInsetFrame
+    root.appendChild(windInsetFrame)
 
     shadow.appendChild(root)
 
@@ -286,6 +362,12 @@ class CircuitDiagramElement extends HTMLElement {
       this._applyGridVisibility()
     } else if (name === 'sky-color') {
       this._applySkyColor()
+    } else if (name === 'show-aim-line') {
+      // The render loop reads the attribute each frame; nothing to rebuild.
+    } else if (name === 'show-wind-indicator') {
+      this._applyWindIndicatorVisibility()
+    } else if (name === 'sync-group') {
+      this._refreshBroadcastChannel()
     } else {
       // runway / dimensions / exaggeration / path-width / wind-from all change
       // geometry — rebuild the scene contents and reframe the camera.
@@ -375,6 +457,12 @@ class CircuitDiagramElement extends HTMLElement {
     return this._numberAttr('airspeed', DEFAULT_AIRSPEED)
   }
 
+  /** Sock colour (hex number); defaults to white. */
+  private get _windsockColor(): number {
+    const raw = this.getAttribute('windsock-color')
+    return raw ? parseColor(raw).hex : 0xffffff
+  }
+
   /** Unit horizontal vector for the direction the wind blows *toward*, in world space. */
   private _worldWindToward(): THREE.Vector3 {
     return worldWindToward(this._THREE!, this._windFrom, this._runwayHeading)
@@ -453,9 +541,13 @@ class CircuitDiagramElement extends HTMLElement {
     fillLight.position.set(-1, 1, -1)
     this._scene.add(fillLight)
 
+    this._setupInsetScene(THREE)
+    this._setupAimLine(THREE)
+
     this._buildSceneContents()
     this._frameCamera()
     this._renderLegend()
+    this._applyWindIndicatorVisibility()
     this._setupBroadcastChannel()
 
     this._resizeObserver = new ResizeObserver(() => {
@@ -465,6 +557,7 @@ class CircuitDiagramElement extends HTMLElement {
       this._renderer.setSize(newWidth, newHeight)
       this._camera.aspect = newWidth / newHeight
       this._camera.updateProjectionMatrix()
+      this._layoutWindInset()
     })
     this._resizeObserver.observe(container)
 
@@ -473,9 +566,56 @@ class CircuitDiagramElement extends HTMLElement {
     if (this._visible) this._animFrameId = requestAnimationFrame(this._boundLoop)
   }
 
+  /**
+   * Name of this instance's sync channel. An explicit `sync-group` scopes it
+   * directly; otherwise the channel is keyed by a hash of the example's identity
+   * (paths + geometry/wind attributes) so genuine copies of the *same* example
+   * auto-pair for presenter/slide use while *different* examples on a page stay
+   * independent. Cosmetic-only attributes (height, legend/help, the overlay
+   * toggles) are excluded so a pair that differs only in chrome still pairs.
+   */
+  private _syncChannelName(): string {
+    const group = this.getAttribute('sync-group')?.trim()
+    if (group) return `${BROADCAST_CHANNEL}:${group}`
+    const identity = JSON.stringify({
+      runway: this._runwayDesignator,
+      runwayLength: this._runwayLength,
+      runwayWidth: this._runwayWidth,
+      verticalExaggeration: this._verticalExaggeration,
+      pathWidth: this._pathWidth,
+      cornerRadius: this._cornerRadius,
+      windFrom: this.getAttribute('wind-from'),
+      windSpeed: this.getAttribute('wind-speed'),
+      airspeed: this.getAttribute('airspeed'),
+      terrainSeed: this.getAttribute('terrain-seed'),
+      paths: (this._pathsData ?? []).map(path => [
+        path.label,
+        path.color,
+        path.points,
+        path.segmentLabels,
+      ]),
+    })
+    return `${BROADCAST_CHANNEL}:${(hashSeed(identity) >>> 0).toString(36)}`
+  }
+
   private _setupBroadcastChannel() {
-    this._broadcastChannel = new BroadcastChannel(BROADCAST_CHANNEL)
-    this._broadcastChannel.onmessage = ({ data }) => {
+    const name = this._syncChannelName()
+    this._broadcastChannel = new BroadcastChannel(name)
+    this._broadcastChannelName = name
+    this._attachBroadcastHandlers(this._broadcastChannel)
+
+    this._orbitControls!.addEventListener('change', () => {
+      if (this._applyingRemoteCamera) return
+      this._broadcastChannel?.postMessage({
+        type: 'camera',
+        position: this._camera!.position.toArray(),
+        target: this._orbitControls!.target.toArray(),
+      })
+    })
+  }
+
+  private _attachBroadcastHandlers(channel: BroadcastChannel) {
+    channel.onmessage = ({ data }) => {
       if (data.type === 'camera') {
         // Ignore remote camera while actively flying, but follow it when paused
         // (so paired views can look around together).
@@ -496,15 +636,17 @@ class CircuitDiagramElement extends HTMLElement {
         this._resumePlayback(false)
       }
     }
+  }
 
-    this._orbitControls!.addEventListener('change', () => {
-      if (this._applyingRemoteCamera) return
-      this._broadcastChannel?.postMessage({
-        type: 'camera',
-        position: this._camera!.position.toArray(),
-        target: this._orbitControls!.target.toArray(),
-      })
-    })
+  /** Reopen the sync channel if the example's identity (or `sync-group`) changed. */
+  private _refreshBroadcastChannel() {
+    if (!this._sceneReady) return
+    const name = this._syncChannelName()
+    if (name === this._broadcastChannelName) return
+    this._broadcastChannel?.close()
+    this._broadcastChannel = new BroadcastChannel(name)
+    this._broadcastChannelName = name
+    this._attachBroadcastHandlers(this._broadcastChannel)
   }
 
   /** Build (or rebuild) all geometry: terrain, runway, paths, windsock, grid. */
@@ -516,6 +658,7 @@ class CircuitDiagramElement extends HTMLElement {
     this._buildGrid(THREE)
     this._buildRunway(THREE)
     this._buildWindsock(THREE)
+    this._buildInsetWindsock(THREE)
     this._buildPaths(THREE)
   }
 
@@ -605,6 +748,7 @@ class CircuitDiagramElement extends HTMLElement {
       sockLength: 70,
       sockMouthRadius: 14,
       sockTailRadius: 5,
+      sockColor: this._windsockColor,
     })
 
     // Droop reflects wind strength: horizontal at/above the full-extension speed,
@@ -626,6 +770,296 @@ class CircuitDiagramElement extends HTMLElement {
     group.visible = this._boolAttr('show-windsock')
     this._scene!.add(group)
     this._windsockGroup = group
+  }
+
+  // ---- mini windsock inset -----------------------------------------------
+
+  /** One-time setup of the second scene + camera the wind inset renders into. */
+  private _setupInsetScene(THREE: typeof import('three')) {
+    const scene = new THREE.Scene()
+    scene.add(new THREE.AmbientLight(0xffffff, 0.85))
+    const key = new THREE.DirectionalLight(0xffffff, 0.9)
+    key.position.set(1, 2, 1)
+    scene.add(key)
+
+    // A small ground patch under the sock so it reads as standing on the field.
+    const disc = new THREE.Mesh(
+      new THREE.CircleGeometry(70, 32),
+      new THREE.MeshLambertMaterial({ color: 0x5c8a5c })
+    )
+    disc.rotation.x = -Math.PI / 2
+    scene.add(disc)
+
+    const { hex } = parseColor(this.getAttribute('sky-color') || DEFAULT_SKY_COLOR)
+    scene.background = new THREE.Color(hex)
+
+    this._insetScene = scene
+    this._insetCamera = new THREE.PerspectiveCamera(40, 1, 1, 5000)
+  }
+
+  /** Build the sock shown in the inset, oriented + drooped like the main one. */
+  private _buildInsetWindsock(THREE: typeof import('three')) {
+    if (!this._insetScene) return
+    const { group, sockPivot } = buildWindsock(THREE, {
+      poleHeight: 90,
+      poleRadius: 2,
+      sockLength: 70,
+      sockMouthRadius: 14,
+      sockTailRadius: 5,
+      sockColor: this._windsockColor,
+    })
+
+    const windSpeedAttr = this.getAttribute('wind-speed')
+    const displaySpeed =
+      windSpeedAttr !== null && Number.isFinite(parseFloat(windSpeedAttr))
+        ? this._windSpeed
+        : WINDSOCK_FULL_EXTENSION_SPEED
+    sockPivot.rotation.z = -windsockDroopAngle(displaySpeed, WINDSOCK_MAX_DROOP)
+    group.rotation.y = windsockYawRotation(this._windFrom, this._runwayHeading)
+
+    this._insetScene.add(group)
+    this._insetWindsockGroup = group
+  }
+
+  private _disposeInsetWindsock() {
+    if (!this._insetWindsockGroup || !this._insetScene) return
+    this._insetWindsockGroup.traverse(object => {
+      const mesh = object as THREE.Mesh
+      if (mesh.geometry) mesh.geometry.dispose()
+      const material = mesh.material as THREE.Material | undefined
+      if (material) material.dispose()
+    })
+    this._insetScene.remove(this._insetWindsockGroup)
+    this._insetWindsockGroup = null
+  }
+
+  private _windIndicatorOn(): boolean {
+    return this._boolAttr('show-wind-indicator')
+  }
+
+  private _applyWindIndicatorVisibility() {
+    if (this._windInsetFrameEl) {
+      this._windInsetFrameEl.style.display = this._windIndicatorOn() ? '' : 'none'
+    }
+    this._layoutWindInset()
+  }
+
+  /** Bottom-right pixel box of the inset (CSS px, origin top-left). Bottom-right
+   * keeps it clear of the legend (top-left) and the help link (top-right). */
+  private _insetBox(): { size: number; left: number; top: number } {
+    const width = this._root.clientWidth
+    const height = this._root.clientHeight
+    const size = Math.round(
+      Math.min(INSET_SIZE_MAX, Math.max(INSET_SIZE_MIN, width * INSET_SIZE_FRACTION))
+    )
+    const left = width - size - INSET_MARGIN
+    const top = height - size - INSET_MARGIN
+    return { size, left, top }
+  }
+
+  /** Position/size the HTML frame that sits over the inset viewport. */
+  private _layoutWindInset() {
+    const frame = this._windInsetFrameEl
+    if (!frame || !this._windIndicatorOn()) return
+    const { size, left, top } = this._insetBox()
+    frame.style.width = `${size}px`
+    frame.style.height = `${size}px`
+    frame.style.left = `${left}px`
+    frame.style.top = `${top}px`
+  }
+
+  /** Aim the inset camera from the current view azimuth at a fixed elevation. */
+  private _updateInsetCamera() {
+    const THREE = this._THREE
+    if (!THREE || !this._insetCamera || !this._camera) return
+
+    const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(this._camera.quaternion)
+    const horizontal = new THREE.Vector3(forward.x, 0, forward.z)
+    if (horizontal.lengthSq() > 1e-6) {
+      horizontal.normalize()
+      this._insetAzimuth = Math.atan2(horizontal.z, horizontal.x)
+    }
+    const azimuth = this._insetAzimuth
+    const elevation = (INSET_CAM_ELEVATION_DEG * Math.PI) / 180
+    // Sock centre (mid-pole height); camera sits back along the view azimuth.
+    const center = new THREE.Vector3(0, 55, 0)
+    const cos = Math.cos(elevation)
+    this._insetCamera.position.set(
+      center.x - Math.cos(azimuth) * cos * INSET_CAM_DISTANCE,
+      center.y + Math.sin(elevation) * INSET_CAM_DISTANCE,
+      center.z - Math.sin(azimuth) * cos * INSET_CAM_DISTANCE
+    )
+    this._insetCamera.up.set(0, 1, 0)
+    this._insetCamera.lookAt(center)
+  }
+
+  /** Render the wind inset into its corner viewport (after the main render). */
+  private _renderInset() {
+    const renderer = this._renderer
+    if (!renderer || !this._insetScene || !this._insetCamera || !this._windIndicatorOn()) return
+
+    this._updateInsetCamera()
+
+    const height = this._root.clientHeight
+    const { size, left, top } = this._insetBox()
+    // setViewport/setScissor use CSS px with origin at the bottom-left.
+    const x = left
+    const y = height - top - size
+
+    renderer.setScissorTest(true)
+    renderer.setViewport(x, y, size, size)
+    renderer.setScissor(x, y, size, size)
+    renderer.render(this._insetScene, this._insetCamera)
+    renderer.setScissorTest(false)
+    renderer.setViewport(0, 0, this._root.clientWidth, height)
+  }
+
+  // ---- nose-forward aiming line ------------------------------------------
+
+  /** One-time setup of the dashed aiming-line tube + its ground-intercept marker. */
+  private _setupAimLine(THREE: typeof import('three')) {
+    // A unit cylinder along +Y (height 1), oriented/scaled to the line each frame.
+    const geometry = new THREE.CylinderGeometry(
+      AIM_LINE_RADIUS,
+      AIM_LINE_RADIUS,
+      1,
+      8,
+      1,
+      true
+    )
+    // Dashes come from a repeating alpha map along the tube's length (V axis of
+    // the cylinder side): opaque for the dash, transparent for the gap. The tile
+    // count is set per frame from the tube length so the dash size stays constant
+    // in world units.
+    let dashTexture: THREE.CanvasTexture | null = null
+    if (AIM_LINE_DASHED) {
+      const dashCanvas = document.createElement('canvas')
+      dashCanvas.width = 1
+      dashCanvas.height = 64
+      const dashContext = dashCanvas.getContext('2d')!
+      const dashFraction = AIM_LINE_DASH / (AIM_LINE_DASH + AIM_LINE_GAP)
+      const dashHeight = Math.round(dashCanvas.height * dashFraction)
+      dashContext.fillStyle = '#000000'
+      dashContext.fillRect(0, 0, 1, dashCanvas.height)
+      // Dash at the canvas bottom so the tube's near end (V=0) starts opaque —
+      // otherwise the segment right at the camera lands on a gap and the tube
+      // looks like it begins far away.
+      dashContext.fillStyle = '#ffffff'
+      dashContext.fillRect(0, dashCanvas.height - dashHeight, 1, dashHeight)
+      dashTexture = new THREE.CanvasTexture(dashCanvas)
+      dashTexture.wrapS = THREE.RepeatWrapping
+      dashTexture.wrapT = THREE.RepeatWrapping
+    }
+
+    const material = new THREE.MeshBasicMaterial({
+      color: AIM_LINE_COLOR,
+      transparent: true,
+      opacity: 0.7,
+      depthTest: false,
+      side: THREE.DoubleSide,
+      alphaMap: dashTexture,
+      alphaTest: dashTexture ? 0.4 : 0,
+    })
+    const line = new THREE.Mesh(geometry, material)
+    line.renderOrder = 11
+    line.visible = false
+    line.frustumCulled = false
+    this._scene!.add(line)
+    this._aimLine = line
+
+    const marker = new THREE.Mesh(
+      new THREE.RingGeometry(28, 44, 32),
+      new THREE.MeshBasicMaterial({
+        color: AIM_LINE_COLOR,
+        transparent: true,
+        opacity: 0.85,
+        side: THREE.DoubleSide,
+        depthTest: false,
+      })
+    )
+    marker.rotation.x = -Math.PI / 2
+    marker.renderOrder = 11
+    marker.visible = false
+    this._scene!.add(marker)
+    this._aimMarker = marker
+  }
+
+  /** Point the aiming line straight ahead of the view to its ground intercept. */
+  private _updateAimLine() {
+    const THREE = this._THREE
+    const line = this._aimLine
+    const marker = this._aimMarker
+    if (!THREE || !line || !marker || !this._camera) return
+
+    const flying = this._playback?.phase === 'fly'
+    if (!flying || !this._boolAttr('show-aim-line')) {
+      line.visible = false
+      marker.visible = false
+      return
+    }
+
+    // Start the line just below the eye (the aircraft beneath the pilot) and
+    // point it along the nose. The drop is along the pilot's "down" (perpendicular
+    // to the view), so the line sits clearly below the sightline and reads out
+    // ahead to where it meets the ground on descent, rather than collapsing onto
+    // the view axis.
+    const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(this._camera.quaternion)
+    const down = new THREE.Vector3(0, -1, 0).applyQuaternion(this._camera.quaternion)
+    const start = this._camera.position.clone().addScaledVector(down, AIM_LINE_DROP)
+
+    let length = AIM_LINE_MAX
+    let hitsGround = false
+    if (forward.y < -1e-3) {
+      const toGround = -start.y / forward.y
+      if (toGround > 0 && toGround <= AIM_LINE_MAX) {
+        length = toGround
+        hitsGround = true
+      }
+    }
+    const end = start.clone().addScaledVector(forward, length)
+    // Draw the tube from a little ahead of the origin so its near end never
+    // envelops the camera (which sits just above the origin).
+    const tubeStart = start.clone().addScaledVector(forward, AIM_LINE_NEAR)
+    const tubeLength = Math.max(0, length - AIM_LINE_NEAR)
+    if (tubeLength < 1e-3) {
+      line.visible = false
+      marker.visible = hitsGround
+      if (hitsGround) marker.position.set(end.x, 0.5, end.z)
+      return
+    }
+
+    // Orient + stretch the unit cylinder (built along +Y) to span tubeStart→end.
+    const midpoint = tubeStart.clone().add(end).multiplyScalar(0.5)
+    line.position.copy(midpoint)
+    line.scale.set(1, tubeLength, 1)
+    line.quaternion.setFromUnitVectors(
+      new THREE.Vector3(0, 1, 0),
+      forward.clone().normalize()
+    )
+    // Keep the dash period constant in world units as the length changes.
+    const dashMap = (line.material as THREE.MeshBasicMaterial).alphaMap
+    if (dashMap) dashMap.repeat.set(1, tubeLength / (AIM_LINE_DASH + AIM_LINE_GAP))
+    line.visible = true
+
+    if (hitsGround) {
+      marker.position.set(end.x, 0.5, end.z)
+      marker.visible = true
+    } else {
+      marker.visible = false
+    }
+  }
+
+  private _disposeAimLine() {
+    for (const object of [this._aimLine, this._aimMarker]) {
+      if (!object) continue
+      object.geometry.dispose()
+      const material = object.material as THREE.MeshBasicMaterial
+      material.alphaMap?.dispose()
+      material.dispose()
+      this._scene?.remove(object)
+    }
+    this._aimLine = null
+    this._aimMarker = null
   }
 
   private _buildPaths(THREE: typeof import('three')) {
@@ -985,6 +1419,7 @@ class CircuitDiagramElement extends HTMLElement {
     if (!this._THREE || !this._scene) return
     const { hex } = parseColor(this.getAttribute('sky-color') || DEFAULT_SKY_COLOR)
     this._scene.background = new this._THREE.Color(hex)
+    if (this._insetScene) this._insetScene.background = new this._THREE.Color(hex)
   }
 
   // ---- track flythrough --------------------------------------------------
@@ -1215,6 +1650,7 @@ class CircuitDiagramElement extends HTMLElement {
     this._buildSceneContents()
     this._frameCamera()
     this._renderLegend()
+    this._refreshBroadcastChannel()
   }
 
   private _disposeSceneContents() {
@@ -1243,6 +1679,7 @@ class CircuitDiagramElement extends HTMLElement {
     this._runwayGroup = null
     disposeGroup(this._windsockGroup)
     this._windsockGroup = null
+    this._disposeInsetWindsock()
 
     if (this._gridHelper) {
       this._gridHelper.geometry.dispose()
@@ -1262,7 +1699,9 @@ class CircuitDiagramElement extends HTMLElement {
       // Free orbit when idle, or look-around while a flight is paused.
       this._orbitControls!.update()
     }
+    this._updateAimLine()
     this._renderer!.render(this._scene!, this._camera!)
+    this._renderInset()
   }
 
   private _teardown() {
@@ -1271,12 +1710,16 @@ class CircuitDiagramElement extends HTMLElement {
     this._playback = null
     this._renderer?.domElement.removeEventListener('pointerdown', this._boundPauseOnInteract)
     this._disposeSceneContents()
+    this._disposeAimLine()
     if (this._orbitControls) this._orbitControls.dispose()
     if (this._renderer) {
       this._renderer.domElement.remove()
       this._renderer.dispose()
     }
     if (this._broadcastChannel) this._broadcastChannel.close()
+
+    this._insetCamera = null
+    this._insetScene = null
 
     this._animFrameId = null
     this._sceneReady = false
@@ -1285,6 +1728,7 @@ class CircuitDiagramElement extends HTMLElement {
     this._scene = null
     this._orbitControls = null
     this._broadcastChannel = null
+    this._broadcastChannelName = null
     this._resizeObserver = null
   }
 }
