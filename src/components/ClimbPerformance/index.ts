@@ -308,6 +308,27 @@ export class ClimbPerformanceElement extends HTMLElement {
     return zeroY - excess * (strip.h / totalRange)
   }
 
+  // Nudge label centres apart so neighbouring labels don't overlap, keeping them
+  // ordered and within [lo, hi]. `centers` must be sorted ascending; `halfWidths`
+  // is each label's half-width in px. The marker lines stay at their true position;
+  // only the text is shifted (needed because Vy and Vmd sit within a few px when
+  // vztp places them close — see the physics notes in INSTRUCTIONS.md).
+  private _spreadLabelXs(centers: number[], halfWidths: number[], pad: number, lo: number, hi: number): number[] {
+    const n = centers.length
+    const xs = centers.slice()
+    for (let i = 1; i < n; i++) {
+      const need = xs[i - 1] + halfWidths[i - 1] + pad + halfWidths[i]
+      if (xs[i] < need) xs[i] = need
+    }
+    if (n > 0) xs[n - 1] = Math.min(xs[n - 1], hi - halfWidths[n - 1])
+    for (let i = n - 2; i >= 0; i--) {
+      const cap = xs[i + 1] - halfWidths[i + 1] - pad - halfWidths[i]
+      if (xs[i] > cap) xs[i] = cap
+    }
+    if (n > 0) xs[0] = Math.max(xs[0], lo + halfWidths[0])
+    return xs
+  }
+
   private _startRaf() {
     if (this._rafId !== null) return
     const tick = () => {
@@ -377,23 +398,33 @@ export class ClimbPerformanceElement extends HTMLElement {
     this._fillBetween(ctx, xs, availY, reqY, CLR_EXCESS,  i => availY[i] < reqY[i])
     this._fillBetween(ctx, xs, reqY, availY, CLR_DEFICIT, i => reqY[i]   < availY[i])
 
-    // Key speed dashed markers (shown on both charts)
+    // Key speed dashed markers (shown on both charts). Sorted by speed so the
+    // label-spreading pass sees them left-to-right (Vy and Vmd can swap order
+    // depending on vztp).
     const speedMarkers = [
       { v: this._model.vx, color: CLR_VX,  lw: 1.5, label: 'Vx'  },
       { v: this._model.vy, color: CLR_VY,  lw: 1.5, label: 'Vy'  },
       { v: 1.0,            color: CLR_VMD, lw: 1.0, label: 'Vmd' },
-    ]
-    for (const { v, color, lw, label } of speedMarkers) {
+    ].sort((a, b) => a.v - b.v)
+    for (const { v, color, lw } of speedMarkers) {
       const px = this._vToX(v, area)
       ctx.save()
       ctx.setLineDash([5, 4]); ctx.strokeStyle = color; ctx.lineWidth = lw
       ctx.beginPath(); ctx.moveTo(px, area.y); ctx.lineTo(px, area.y + area.h); ctx.stroke()
       ctx.restore()
+    }
+    const markerHalfW = speedMarkers.map(({ lw, label }) => {
+      ctx.font = (lw > 1 ? 'bold ' : '') + '13px system-ui,sans-serif'
+      return ctx.measureText(label).width / 2
+    })
+    const markerLabelXs = this._spreadLabelXs(
+      speedMarkers.map(({ v }) => this._vToX(v, area)), markerHalfW, 6, area.x, area.x + area.w)
+    ctx.textAlign = 'center'; ctx.textBaseline = 'top'
+    speedMarkers.forEach(({ color, lw, label }, i) => {
       ctx.fillStyle = color
       ctx.font = (lw > 1 ? 'bold ' : '') + '13px system-ui,sans-serif'
-      ctx.textAlign = 'center'; ctx.textBaseline = 'top'
-      ctx.fillText(label, px, area.y + 7)
-    }
+      ctx.fillText(label, markerLabelXs[i], area.y + 7)
+    })
 
     // Required curve — dashed red
     ctx.beginPath()
@@ -434,28 +465,43 @@ export class ClimbPerformanceElement extends HTMLElement {
     ctx.restore()
 
     // ── X-axis labels (shifted below the excess strip) ────────────────────────
+    // Sorted by speed, and the label + kt text spread horizontally so the Vy and
+    // Vmd labels (and their kt values) don't collide when vztp sits them close.
     const xMarkers = [
       { v: VS_NORM,        label: 'VS',  color: '#94a3b8', bold: false },
       { v: this._model.vx, label: 'Vx',  color: CLR_VX,   bold: true  },
       { v: this._model.vy, label: 'Vy',  color: CLR_VY,   bold: true  },
       { v: 1.0,            label: 'Vmd', color: CLR_VMD,  bold: false },
-    ]
+    ].sort((a, b) => a.v - b.v)
     const labelBaseY = area.y + area.h + STRIP_SKIP
+    const showKts = this._vsKts !== null && this._cruiseKts !== null
+    const ktLabel = (v: number) =>
+      `${Math.round(this._vsKts! + (v - VS_NORM) / (VMAX_NORM - VS_NORM) * (this._cruiseKts! - this._vsKts!))}kt`
+    const xMarkerHalfW = xMarkers.map(({ label, bold, v }) => {
+      ctx.font = (bold ? 'bold ' : '') + '14px system-ui,sans-serif'
+      let width = ctx.measureText(label).width
+      if (showKts) {
+        ctx.font = '13px system-ui,sans-serif'
+        width = Math.max(width, ctx.measureText(ktLabel(v)).width)
+      }
+      return width / 2
+    })
+    const xLabelXs = this._spreadLabelXs(
+      xMarkers.map(({ v }) => this._vToX(v, area)), xMarkerHalfW, 6, area.x, area.x + area.w)
     ctx.textBaseline = 'top'
-    for (const { v, label, color, bold } of xMarkers) {
+    xMarkers.forEach(({ v, label, color, bold }, i) => {
       const px = this._vToX(v, area)
       ctx.strokeStyle = AXIS_CLR
       ctx.beginPath(); ctx.moveTo(px, labelBaseY); ctx.lineTo(px, labelBaseY + 6); ctx.stroke()
       ctx.fillStyle = color
       ctx.font = (bold ? 'bold ' : '') + '14px system-ui,sans-serif'
       ctx.textAlign = 'center'
-      ctx.fillText(label, px, labelBaseY + 8)
-      if (this._vsKts !== null && this._cruiseKts !== null) {
-        const kts = Math.round(this._vsKts + (v - VS_NORM) / (VMAX_NORM - VS_NORM) * (this._cruiseKts - this._vsKts))
+      ctx.fillText(label, xLabelXs[i], labelBaseY + 8)
+      if (showKts) {
         ctx.fillStyle = '#475569'; ctx.font = '13px system-ui,sans-serif'
-        ctx.fillText(`${kts}kt`, px, labelBaseY + 26)
+        ctx.fillText(ktLabel(v), xLabelXs[i], labelBaseY + 26)
       }
-    }
+    })
 
     ctx.fillStyle = '#475569'; ctx.font = '13px system-ui,sans-serif'
     ctx.textAlign = 'center'; ctx.textBaseline = 'top'
