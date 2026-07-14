@@ -80,6 +80,7 @@ The charts use a normalised speed scale rather than knots, so they represent the
 | `height` | `400px` | CSS height of the component |
 | `vs` | — | Stall speed in kts. When set alongside `cruise-kts`, x-axis tick labels are shown in kts |
 | `cruise-kts` | — | Speed at the right edge of the chart (Vmax = 1.5 × Vmd). Used with `vs` to calibrate kts axis labels |
+| `vztp` | `2.7` | Prop zero-thrust speed (normalised). Tunes where Vy falls relative to Vmd: `2.7` places Vy ≈ Vmd (best glide), matching typical piston POH data. Use `3.0` for a Cessna 152/172 feel (Vy just above Vmd) or `2.5` for a Piper PA-28 feel (Vy just below Vmd) |
 | `show-help` | — | Set to `"false"` to hide the in-component help (?) link |
 
 ## Installation
