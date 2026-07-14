@@ -34,9 +34,10 @@ As you move the sliders, the arrows and gauges update to show the new balance of
 Use it during ground briefings to show concepts that are otherwise hard to describe:
 
 - **Straight and level flight** — demonstrate that lift equals weight and thrust equals drag, and how changing one force disturbs the balance
-- **Climbing and descending** — show how excess thrust produces a climb, and how reducing power causes a descent even with the same attitude
-- **The stall** — if your aircraft's stall speed is configured, the tool shows lift collapsing and the nose dropping when speed falls too low
-- **Turns** — enable the bank control to show how lift must increase to maintain altitude in a turn, and how total drag rises as a result
+- **Climbing and descending** — show how excess thrust produces a climb, and how reducing power causes a descent even with the same attitude. Pitching up gives an immediate climb as speed trades for height, then settles at the modest rate set by excess power — attitude alone is not enough to climb
+- **The glide** — close the throttle and lower the nose: the aircraft settles into a steady glide with lift still nearly equal to weight, tilted slightly forward, while the along-path component of weight does the job thrust used to do
+- **The stall** — the wing stalls when its critical angle of attack is exceeded (at your configured `v_1` in level flight, or above it in a steep turn): lift collapses and the nose drops
+- **Turns** — enable the bank control to show that rolling in without back pressure produces a descending turn, and that holding altitude in a steep turn needs more angle of attack and more power
 
 The tool works in any modern browser — a laptop or tablet connected to a projector is all you need.
 
@@ -46,8 +47,10 @@ Try it yourself between lessons to build intuition:
 
 1. Set full power and watch the aircraft accelerate and climb
 2. Reduce power gradually — notice how the rate of climb decreases, and what throttle setting holds level flight
-3. Raise the nose at low speed and observe how the drag arrow grows relative to thrust
-4. Lower the nose and add power — watch how quickly speed and lift recover
+3. Raise the nose and watch the climb: strong at first while speed washes off, then settling to whatever the spare power can sustain
+4. Close the throttle and find the glide: lower the nose until the speed steadies, and notice lift is still almost equal to weight
+5. Raise the nose at low speed and observe how the drag arrow grows relative to thrust
+6. Lower the nose and add power — watch how quickly speed and lift recover
 
 Experimenting here costs nothing and reinforces what you cover in the air.
 
@@ -69,7 +72,7 @@ Experimenting here costs nothing and reinforces what you cover in the air.
 | `model-path` | `/aircraft.glb` | URL to the GLTF aircraft model file |
 | `v_ne` | — | Never-exceed speed (kts). Sets ASI scale maximum and draws red radial line |
 | `v_no` | — | Normal operating speed (kts). Top of green arc, bottom of yellow arc |
-| `v_1` | — | Stall speed clean (kts). Bottom of green arc |
+| `v_1` | — | Stall speed clean (kts). Bottom of green arc; also calibrates the stalling angle of attack (a generic default applies when unset) |
 | `cruise-kts` | `100` | Airspeed at nominal cruise. Calibrates the ASI needle to the aircraft's actual speed range |
 | `banking` | — | Boolean. When present, shows a bank angle slider. Banking tilts the lift vector and displays its vertical and horizontal components |
 | `show-help` | — | Set to `"false"` to hide the in-component help (?) link |

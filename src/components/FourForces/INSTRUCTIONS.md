@@ -1,11 +1,11 @@
 # FourForces component
 
-Source: `src/components/FourForces/index.js` (custom element `four-forces`), CSS in `index.css`.
+Source: `src/components/FourForces/index.ts` (custom element `four-forces`), CSS in `index.css`.
 
 The core component is a self-contained 3D aerodynamic force visualizer implemented as a custom element (`FourForcesElement extends HTMLElement`). Key internals:
 
 - **Three.js scene** — renderer, orbit-controlled camera, loads `aircraft.glb` (GLTF)
-- **Physics tick loop** — computes lift, drag, thrust, speed convergence, and VSI each frame using aerodynamic coefficients (CL, CD). Power and attitude sliders drive the simulation.
+- **Physics tick loop** — a point-mass longitudinal model with two state variables: airspeed `v` and flight-path angle `γ`. The pitch slider sets attitude θ; angle of attack is `α = θ − γ`, so a power-off glide keeps lift ≈ weight (the path follows the nose) and pitching up produces a zoom climb before settling at the excess-power rate. Stall triggers on α exceeding a critical angle derived from `v_1`. Integration uses measured frame time (frame-rate independent). The derivation and calibration live in the constants block at the top of `index.ts`.
 - **Arrow objects** — scaled 3D arrows for each of the four forces; `_updateArrows()` repositions them each tick
 - **2D label overlay** — `_updateLabels()` projects 3D arrow tips to screen coordinates and positions absolutely-placed HTML labels
 - **Weight component decomposition** — `_updateWeightComponents()` shows weight resolved along and perpendicular to the flight path during climbs/descents
