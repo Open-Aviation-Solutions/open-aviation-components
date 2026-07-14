@@ -1,7 +1,38 @@
 ---
 ---
-<climb-performance height="540px" vs="45" cruise-kts="145" show-help="false"></climb-performance>
+<div class="cp-controls">
+  <label for="cp-vztp">Aircraft type</label>
+  <select id="cp-vztp">
+    <option value="3.0">Cessna 152/172 — Vy just above best glide</option>
+    <option value="2.7" selected>Generic piston — Vy ≈ best glide</option>
+    <option value="2.5">Piper PA-28 — Vy just below best glide</option>
+  </select>
+</div>
+<climb-performance id="climb-performance-demo" height="540px" vs="45" cruise-kts="145" vztp="2.7" show-help="false"></climb-performance>
+
+<style>
+  .cp-controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 12px;
+  }
+  .cp-controls select {
+    background: var(--sl-color-bg-inline-code, #313244);
+    color: var(--sl-color-gray-1, #cdd6f4);
+    border: 1px solid var(--sl-color-gray-5, #45475a);
+    padding: 6px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font: inherit;
+  }
+</style>
 
 <script>
   import '../../src/define'
+
+  const select = document.getElementById('cp-vztp') as HTMLSelectElement
+  const element = document.getElementById('climb-performance-demo')!
+  select.addEventListener('change', () => element.setAttribute('vztp', select.value))
 </script>

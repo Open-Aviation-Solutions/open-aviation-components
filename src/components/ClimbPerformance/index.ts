@@ -15,69 +15,65 @@ sheet.replaceSync(styles)
 // Power required:         PR(v) = D(v)·v = 0.5·(v³ + 1/v)
 //
 // Fixed-pitch propeller model:
-//   TA(v) = TA_MAX · (VZTP − v) / (VZTP − VS_NORM)   [linear decline with speed]
-//   PA(v) = TA(v) · v                                 [parabola, peaks at VZTP/2]
+//   TA(v) = TA_MAX · (vztp − v) / (vztp − VS_NORM)   [linear decline with speed]
+//   PA(v) = TA(v) · v                                 [parabola, peaks at vztp/2]
 //
-// VZTP  = speed at which prop thrust would reach zero (always > VMAX_NORM)
+// vztp   = speed (normalised) at which prop thrust would reach zero; always > VMAX_NORM.
+//          It is the single per-plane knob (the `vztp` attribute). A higher vztp makes
+//          the thrust/power-available curve flatter — closer to real props, whose power
+//          available is nearly flat across the envelope — and pushes Vy up towards Vmd.
 // TA_MAX = thrust at VS, set so TA/TR ≈ 1.31 at VS — matching a typical GA aircraft.
-// Parabolic PA peaks at ~0.85 (below Vmd), then declines, showing the characteristic
-// fixed-pitch prop behaviour where power available falls off at high speed.
+//          Independent of vztp (depends only on VS_NORM and the 1.31 calibration).
+//
+// The default vztp = 2.70 places Vy (≈0.98) essentially at Vmd (best glide, 1.0),
+// matching piston POH data where best-rate and best-glide speeds nearly coincide. With
+// the old vztp = 2.0, Vy sat at ≈0.87 — ~13 kt below Vmd in the vs=45/cruise=145 demo —
+// which wrongly implied best glide was much faster than Vy. Suggested per-family values:
+//   vztp = 3.0  → Vy a couple of knots above Vmd  (Cessna 152/172 pattern)
+//   vztp = 2.7  → Vy ≈ Vmd                          (default)
+//   vztp = 2.5  → Vy a couple of knots below Vmd   (Piper PA-28 pattern)
 const VS_NORM   = 0.50
 const VMAX_NORM = 1.50
-// VZTP = 2.0 → zero-thrust speed at 2×Vmd (≈ 195 kt for vs=45/cruise=145 demo).
-// With VZTP = 2×Vmd, PA peaks exactly at Vmd and returns to its VS value at Vmax —
-// a symmetric parabola. This is more realistic than VZTP=1.70 (which peaked at 80 kt
-// and dropped 58% by Vmax). Real GA aircraft have nearly flat PA across the flight
-// envelope; VZTP=2.0 gives a visible but moderate hump for educational clarity.
-const VZTP      = 2.00
+const DEFAULT_VZTP = 2.70
 const TA_MAX    = 1.31 * 0.5 * (VS_NORM * VS_NORM + 1 / (VS_NORM * VS_NORM))  // ≈ 2.784
-const TA_SLOPE  = TA_MAX / (VZTP - VS_NORM)   // ≈ 1.856, used in Vx/Vy solvers
 
 const N_SAMPLES = 300
 
-// Vx: maximise (TA−TR)  →  TA'(v) = TR'(v)
-//   −TA_SLOPE = v − 1/v³   →   f(v) = 1/v³ − v − TA_SLOPE = 0
-function _solveVx(): number {
-  let v = 0.70
-  for (let i = 0; i < 50; i++) {
-    const fv  =  1 / (v * v * v) - v - TA_SLOPE
-    const dfv = -3 / (v * v * v * v) - 1
-    v -= fv / dfv
-  }
-  return v
-}
-const VX_NORM = _solveVx()   // ≈ 0.692
-
-// Vy: maximise (PA−PR)  →  PA'(v) = PR'(v)
-//   TA_SLOPE·(VZTP − 2v) = 0.5·(3v² − 1/v²)
-//   h(v) = TA_SLOPE·VZTP − 2·TA_SLOPE·v − 1.5v² + 0.5/v² = 0
-function _solveVy(): number {
-  let v = 0.80
-  for (let i = 0; i < 50; i++) {
-    const fv  = TA_SLOPE * VZTP - 2 * TA_SLOPE * v - 1.5 * v * v + 0.5 / (v * v)
-    const dfv = -2 * TA_SLOPE - 3 * v - 1 / (v * v * v)
-    v -= fv / dfv
-  }
-  return v
-}
-const VY_NORM = _solveVy()   // ≈ 0.806
-
-// ── Physics functions ─────────────────────────────────────────────────────────
+// ── VZTP-independent physics ───────────────────────────────────────────────────
 function thrustRequired(v: number): number {
   return 0.5 * (v * v + 1 / (v * v))
 }
 function powerRequired(v: number): number {
   return thrustRequired(v) * v
 }
-function thrustAvailable(v: number): number {
-  return TA_MAX * (VZTP - v) / (VZTP - VS_NORM)
+
+// Vx: maximise (TA−TR)  →  TA'(v) = TR'(v)
+//   −taSlope = v − 1/v³   →   f(v) = 1/v³ − v − taSlope = 0
+function _solveVx(taSlope: number): number {
+  let v = 0.70
+  for (let i = 0; i < 60; i++) {
+    const fv  =  1 / (v * v * v) - v - taSlope
+    const dfv = -3 / (v * v * v * v) - 1
+    v -= fv / dfv
+  }
+  return v
 }
-function powerAvailable(v: number): number {
-  return thrustAvailable(v) * v
+
+// Vy: maximise (PA−PR)  →  PA'(v) = PR'(v)
+//   taSlope·(vztp − 2v) = 0.5·(3v² − 1/v²)
+//   h(v) = taSlope·vztp − 2·taSlope·v − 1.5v² + 0.5/v² = 0
+function _solveVy(taSlope: number, vztp: number): number {
+  let v = 0.85
+  for (let i = 0; i < 120; i++) {
+    const fv  = taSlope * vztp - 2 * taSlope * v - 1.5 * v * v + 0.5 / (v * v)
+    const dfv = -2 * taSlope - 3 * v - 1 / (v * v * v)
+    v -= fv / dfv
+  }
+  return v
 }
 
 // ── Excess strip scale ────────────────────────────────────────────────────────
-// Pre-computed so both _drawExcessStrip and _drawCursor can share without recalc.
+// Pre-computed per model so both _drawExcessStrip and _drawCursor can share without recalc.
 function _computeExcessRange(
   availFn: (v: number) => number,
   reqFn:   (v: number) => number
@@ -91,8 +87,34 @@ function _computeExcessRange(
   }
   return { maxPos: maxPos * 1.10, maxNeg: Math.max(maxNeg * 1.10, maxPos * 0.12) }
 }
-const EXCESS_RANGE_T = _computeExcessRange(thrustAvailable, thrustRequired)
-const EXCESS_RANGE_P = _computeExcessRange(powerAvailable,  powerRequired)
+
+// ── Per-plane physics model (all vztp-dependent quantities) ─────────────────────
+interface PhysicsModel {
+  vztp: number
+  taSlope: number
+  vx: number
+  vy: number
+  excessRangeT: { maxPos: number; maxNeg: number }
+  excessRangeP: { maxPos: number; maxNeg: number }
+  thrustAvailable: (v: number) => number
+  powerAvailable:  (v: number) => number
+}
+
+function buildModel(vztp: number): PhysicsModel {
+  const taSlope = TA_MAX / (vztp - VS_NORM)
+  const thrustAvailable = (v: number) => TA_MAX * (vztp - v) / (vztp - VS_NORM)
+  const powerAvailable  = (v: number) => thrustAvailable(v) * v
+  return {
+    vztp,
+    taSlope,
+    vx: _solveVx(taSlope),
+    vy: _solveVy(taSlope, vztp),
+    excessRangeT: _computeExcessRange(thrustAvailable, thrustRequired),
+    excessRangeP: _computeExcessRange(powerAvailable,  powerRequired),
+    thrustAvailable,
+    powerAvailable,
+  }
+}
 
 // ── Layout (CSS px) ───────────────────────────────────────────────────────────
 const ML = 65, MT = 56, MR = 20, MB = 160, CHART_GAP = 24
@@ -114,7 +136,6 @@ const CLR_VY      = '#7c3aed'
 const CLR_VMD     = '#64748b'
 const CLR_STRIP   = 'rgba(22,163,74,0.85)'  // excess curve line on the strip
 
-const SNAP_V      = [VS_NORM, VX_NORM, VY_NORM, 1.0, VMAX_NORM]
 const SNAP_THRESH = 0.025
 
 interface ChartArea {
@@ -122,13 +143,15 @@ interface ChartArea {
 }
 
 export class ClimbPerformanceElement extends HTMLElement {
-  static observedAttributes = ['height', 'vs', 'cruise-kts', 'show-help']
+  static observedAttributes = ['height', 'vs', 'cruise-kts', 'show-help', 'vztp']
 
   private _helpLinkEl!: HTMLAnchorElement
   private _canvas: HTMLCanvasElement
   private _ctx: CanvasRenderingContext2D
   private _dpr = 1
-  private _cursorV = VY_NORM
+  private _vztp = DEFAULT_VZTP
+  private _model = buildModel(DEFAULT_VZTP)
+  private _cursorV = this._model.vy
   private _dragging = false
   private _rafId: number | null = null
   private _dirty = true
@@ -200,6 +223,14 @@ export class ClimbPerformanceElement extends HTMLElement {
     if (name === 'vs') this._vsKts = value === null ? 45 : (value ? parseFloat(value) : null)
     if (name === 'cruise-kts') this._cruiseKts = value === null ? 145 : (value ? parseFloat(value) : null)
     if (name === 'show-help') this._helpLinkEl.style.display = value === 'false' ? 'none' : ''
+    if (name === 'vztp') {
+      const parsed = value ? parseFloat(value) : DEFAULT_VZTP
+      // vztp must exceed VMAX_NORM, else thrust would go non-positive within the chart.
+      this._vztp = Number.isFinite(parsed) && parsed > VMAX_NORM ? parsed : DEFAULT_VZTP
+      const wasAtVy = Math.abs(this._cursorV - this._model.vy) < 1e-6
+      this._model = buildModel(this._vztp)
+      if (wasAtVy) this._cursorV = this._model.vy
+    }
     this._dirty = true
   }
 
@@ -215,7 +246,8 @@ export class ClimbPerformanceElement extends HTMLElement {
     const area = canvasX < midX ? left : right
     let v = VS_NORM + (canvasX - area.x) / area.w * (VMAX_NORM - VS_NORM)
     v = Math.max(VS_NORM, Math.min(VMAX_NORM, v))
-    for (const sv of SNAP_V) {
+    const snapV = [VS_NORM, this._model.vx, this._model.vy, 1.0, VMAX_NORM]
+    for (const sv of snapV) {
       if (Math.abs(v - sv) < SNAP_THRESH) { v = sv; break }
     }
     this._cursorV = v
@@ -307,7 +339,7 @@ export class ClimbPerformanceElement extends HTMLElement {
     for (let i = 0; i <= N_SAMPLES; i++) {
       const v = VS_NORM + (i / N_SAMPLES) * (VMAX_NORM - VS_NORM)
       max = Math.max(max,
-        type === 'thrust' ? thrustAvailable(v) : powerAvailable(v),
+        type === 'thrust' ? this._model.thrustAvailable(v) : this._model.powerAvailable(v),
         type === 'thrust' ? thrustRequired(v)  : powerRequired(v))
     }
     return Math.ceil(max * 10 + 2) / 10
@@ -318,7 +350,7 @@ export class ClimbPerformanceElement extends HTMLElement {
     type: 'thrust' | 'power', yMax: number
   ) {
     const isThrust = type === 'thrust'
-    const availFn  = isThrust ? thrustAvailable : powerAvailable
+    const availFn  = isThrust ? this._model.thrustAvailable : this._model.powerAvailable
     const reqFn    = isThrust ? thrustRequired  : powerRequired
     const title    = isThrust ? 'Thrust vs Airspeed' : 'Power vs Airspeed'
 
@@ -347,9 +379,9 @@ export class ClimbPerformanceElement extends HTMLElement {
 
     // Key speed dashed markers (shown on both charts)
     const speedMarkers = [
-      { v: VX_NORM, color: CLR_VX,  lw: 1.5, label: 'Vx'  },
-      { v: VY_NORM, color: CLR_VY,  lw: 1.5, label: 'Vy'  },
-      { v: 1.0,     color: CLR_VMD, lw: 1.0, label: 'Vmd' },
+      { v: this._model.vx, color: CLR_VX,  lw: 1.5, label: 'Vx'  },
+      { v: this._model.vy, color: CLR_VY,  lw: 1.5, label: 'Vy'  },
+      { v: 1.0,            color: CLR_VMD, lw: 1.0, label: 'Vmd' },
     ]
     for (const { v, color, lw, label } of speedMarkers) {
       const px = this._vToX(v, area)
@@ -403,10 +435,10 @@ export class ClimbPerformanceElement extends HTMLElement {
 
     // ── X-axis labels (shifted below the excess strip) ────────────────────────
     const xMarkers = [
-      { v: VS_NORM, label: 'VS',  color: '#94a3b8', bold: false },
-      { v: VX_NORM, label: 'Vx',  color: CLR_VX,   bold: true  },
-      { v: VY_NORM, label: 'Vy',  color: CLR_VY,   bold: true  },
-      { v: 1.0,     label: 'Vmd', color: CLR_VMD,  bold: false },
+      { v: VS_NORM,        label: 'VS',  color: '#94a3b8', bold: false },
+      { v: this._model.vx, label: 'Vx',  color: CLR_VX,   bold: true  },
+      { v: this._model.vy, label: 'Vy',  color: CLR_VY,   bold: true  },
+      { v: 1.0,            label: 'Vmd', color: CLR_VMD,  bold: false },
     ]
     const labelBaseY = area.y + area.h + STRIP_SKIP
     ctx.textBaseline = 'top'
@@ -463,9 +495,9 @@ export class ClimbPerformanceElement extends HTMLElement {
     cursorV: number
   ) {
     const isThrust = type === 'thrust'
-    const availFn  = isThrust ? thrustAvailable : powerAvailable
+    const availFn  = isThrust ? this._model.thrustAvailable : this._model.powerAvailable
     const reqFn    = isThrust ? thrustRequired  : powerRequired
-    const range    = isThrust ? EXCESS_RANGE_T  : EXCESS_RANGE_P
+    const range    = isThrust ? this._model.excessRangeT  : this._model.excessRangeP
 
     // Sample excess values
     const xs: number[] = [], excessVals: number[] = [], excessY: number[] = []
@@ -486,9 +518,9 @@ export class ClimbPerformanceElement extends HTMLElement {
 
     // Speed marker dashed lines
     const speedMarkers = [
-      { v: VX_NORM, color: CLR_VX,  lw: 1.5 },
-      { v: VY_NORM, color: CLR_VY,  lw: 1.5 },
-      { v: 1.0,     color: CLR_VMD, lw: 1.0 },
+      { v: this._model.vx, color: CLR_VX,  lw: 1.5 },
+      { v: this._model.vy, color: CLR_VY,  lw: 1.5 },
+      { v: 1.0,            color: CLR_VMD, lw: 1.0 },
     ]
     for (const { v, color, lw } of speedMarkers) {
       const px = this._vToX(v, area)
@@ -587,14 +619,14 @@ export class ClimbPerformanceElement extends HTMLElement {
       {
         area: left, yMax: yMaxT,
         pts: [
-          { val: thrustAvailable(v), color: CLR_AVAIL, label: 'Avail' },
+          { val: this._model.thrustAvailable(v), color: CLR_AVAIL, label: 'Avail' },
           { val: thrustRequired(v),  color: CLR_REQ,   label: 'Reqd'  },
         ],
       },
       {
         area: right, yMax: yMaxP,
         pts: [
-          { val: powerAvailable(v), color: CLR_AVAIL, label: 'Avail' },
+          { val: this._model.powerAvailable(v), color: CLR_AVAIL, label: 'Avail' },
           { val: powerRequired(v),  color: CLR_REQ,   label: 'Reqd'  },
         ],
       },
@@ -652,7 +684,7 @@ export class ClimbPerformanceElement extends HTMLElement {
     cursorX: number, area: ChartArea, yMax: number,
     v: number, type: 'thrust' | 'power'
   ) {
-    const avail = type === 'thrust' ? thrustAvailable(v) : powerAvailable(v)
+    const avail = type === 'thrust' ? this._model.thrustAvailable(v) : this._model.powerAvailable(v)
     const req   = type === 'thrust' ? thrustRequired(v)  : powerRequired(v)
     const yAvail = this._valToY(avail, area, yMax)
     const yReq   = this._valToY(req, area, yMax)
@@ -676,8 +708,8 @@ export class ClimbPerformanceElement extends HTMLElement {
       return `${kts} kt`
     }
     if (Math.abs(v - VS_NORM)   < 0.001) return 'VS'
-    if (Math.abs(v - VX_NORM)   < 0.001) return 'Vx'
-    if (Math.abs(v - VY_NORM)   < 0.001) return 'Vy'
+    if (Math.abs(v - this._model.vx) < 0.001) return 'Vx'
+    if (Math.abs(v - this._model.vy) < 0.001) return 'Vy'
     if (Math.abs(v - 1.0)       < 0.001) return 'Vmd'
     if (Math.abs(v - VMAX_NORM) < 0.001) return 'Vmax'
     return `V = ${v.toFixed(2)}`
