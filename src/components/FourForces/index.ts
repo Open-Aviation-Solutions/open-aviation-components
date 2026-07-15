@@ -69,6 +69,21 @@ const ARROW_HEAD_LEN   = 0.07
 const ARROW_HEAD_WIDTH = ARROW_HEAD_LEN * 0.55
 const COMP_CONE_H = ARROW_HEAD_LEN        // component arrowhead height
 const COMP_CONE_R = ARROW_HEAD_WIDTH / 2  // component arrowhead radius
+// Force application points (body frame "x,y,z", scene units, relative to the
+// CoG at the origin; the aircraft spans ~2 units). Weight always acts at the
+// CoG — that is the datum the others are measured from, so it has no offset
+// attribute. Defaults match the classic couples arrangement for the Bristol
+// F.2B: lift (centre of pressure) slightly aft of the CoG — lift/weight
+// couple pitches nose-down; the centre of drag up at the wing cell, with the
+// thrust line below it and drawn from the propeller — thrust/drag couple
+// pitches nose-up, opposing it. Only the offset perpendicular to a force's
+// line of action changes its moment, so e.g. the forward component of the
+// thrust offset is purely where the arrow is drawn from.
+const FORCE_OFFSET_DEFAULTS: Record<'lift' | 'thrust' | 'drag', readonly [number, number, number]> = {
+  lift:   [0, 0, -0.15],
+  thrust: [0, 0.05, 0.5],
+  drag:   [0, 0.25, 0],
+}
 const AERO_K     = 1.476 // dynamic-pressure scale shared by lift and drag
 const CL0 = 0.30, CL_A = 2.5
 const CD0 = 0.030, INV_PIARe = 0.060  // higher induced drag → min-drag ≈ 82 kts → Vy ≠ Vx
@@ -111,7 +126,7 @@ type AirframeMatOriginal = {
 }
 
 class FourForcesElement extends HTMLElement {
-  static observedAttributes = ['height', 'model-path', 'model-rotation', 'model-offset', 'model-opacity', 'v_ne', 'v_no', 'v_1', 'cruise-kts', 'banking', 'show-help']
+  static observedAttributes = ['height', 'model-path', 'model-rotation', 'model-offset', 'model-opacity', 'lift-offset', 'thrust-offset', 'drag-offset', 'v_ne', 'v_no', 'v_1', 'cruise-kts', 'banking', 'show-help']
 
   // DOM references
   private _root!: HTMLDivElement
@@ -137,6 +152,13 @@ class FourForcesElement extends HTMLElement {
   private _bankDeg!: number
   private _showBank!: boolean
   private _modelOpacity: number = MODEL_OPACITY_DEFAULT
+  // Force application points (body frame, relative to the CoG) — see the
+  // `lift-offset`/`thrust-offset`/`drag-offset` attributes.
+  private _forceOffsets: Record<'lift' | 'thrust' | 'drag', [number, number, number]> = {
+    lift:   [...FORCE_OFFSET_DEFAULTS.lift],
+    thrust: [...FORCE_OFFSET_DEFAULTS.thrust],
+    drag:   [...FORCE_OFFSET_DEFAULTS.drag],
+  }
 
   // Physics state
   private _speed!: number
@@ -422,6 +444,15 @@ class FourForcesElement extends HTMLElement {
       const parsed = parseFloat(value ?? '')
       this._modelOpacity = isNaN(parsed) ? MODEL_OPACITY_DEFAULT : Math.max(0, Math.min(1, parsed))
       this._applyAirframeOpacity()
+    }
+    if (name === 'lift-offset' || name === 'thrust-offset' || name === 'drag-offset') {
+      const forceId = name.slice(0, name.indexOf('-')) as 'lift' | 'thrust' | 'drag'
+      if (value === null) {
+        this._forceOffsets[forceId] = [...FORCE_OFFSET_DEFAULTS[forceId]]
+      } else {
+        const [offsetX, offsetY, offsetZ] = value.split(',').map(part => parseFloat(part) || 0)
+        this._forceOffsets[forceId] = [offsetX || 0, offsetY || 0, offsetZ || 0]
+      }
     }
   }
 
@@ -921,6 +952,19 @@ class FourForcesElement extends HTMLElement {
   }
 
   // ── Arrow update ──────────────────────────────────────────────────────────────
+  // World-space application points of the forces: the body-frame offsets
+  // rotated with the airframe. Weight always acts at the CoG (the origin).
+  _forceOrigins() {
+    const THREE = this._THREE!
+    const q = this._aircraftGroup!.quaternion
+    return {
+      lift:   new THREE.Vector3(...this._forceOffsets.lift).applyQuaternion(q),
+      weight: new THREE.Vector3(0, 0, 0),
+      thrust: new THREE.Vector3(...this._forceOffsets.thrust).applyQuaternion(q),
+      drag:   new THREE.Vector3(...this._forceOffsets.drag).applyQuaternion(q),
+    }
+  }
+
   _updateArrows() {
     const THREE = this._THREE!
     if (!this._aircraftGroup) return
@@ -941,10 +985,12 @@ class FourForcesElement extends HTMLElement {
       drag:   new THREE.Vector3(0, -sinGamma, -cosGamma),
     }
 
+    const origins = this._forceOrigins()
     for (const id of ['lift', 'weight', 'thrust', 'drag'] as const) {
       const arrow = this._arrowHelpers[id]
       if (!arrow) continue
       const len = this._forces[id]
+      arrow.position.copy(origins[id])
       arrow.setDirection(dirs[id])
       arrow.setLength(len, ARROW_HEAD_LEN, ARROW_HEAD_WIDTH)
       arrow.visible = len > 0.05
@@ -975,6 +1021,7 @@ class FourForcesElement extends HTMLElement {
       drag:   this._labelDrag,
     }
 
+    const origins = this._forceOrigins()
     for (const id of ['lift', 'weight', 'thrust', 'drag'] as const) {
       const el = labelRefs[id]
       if (!el) continue
@@ -983,7 +1030,7 @@ class FourForcesElement extends HTMLElement {
       const labelDist = (id === 'thrust' || id === 'drag')
         ? this._forces[id] + 0.35
         : this._forces[id] * 1.1
-      const tip = tipDirs[id].clone().multiplyScalar(labelDist)
+      const tip = origins[id].clone().addScaledVector(tipDirs[id], labelDist)
       tip.project(this._camera)
       const x = (tip.x *  0.5 + 0.5) * cw
       const y = (tip.y * -0.5 + 0.5) * ch
@@ -1079,25 +1126,27 @@ class FourForcesElement extends HTMLElement {
 
     // Use the actual lift direction (same vector as drawn by _updateArrows) so the
     // components always join to the real lift tip — including the Z offset
-    // introduced by the flight path angle.
+    // introduced by the flight path angle. The chain starts where the lift
+    // arrow does: at the lift application point, not the CoG.
     const bankRad = this._bankDeg * Math.PI / 180
     const liftDir = new THREE.Vector3(
       -Math.sin(bankRad),
       Math.cos(this._gamma) * Math.cos(bankRad),
       -Math.sin(this._gamma) * Math.cos(bankRad),
     )
-    const L       = this._forces.lift
-    const liftTip = liftDir.clone().multiplyScalar(L)
+    const L          = this._forces.lift
+    const liftOrigin = this._forceOrigins().lift
+    const liftTip    = liftOrigin.clone().addScaledVector(liftDir, L)
 
     // Support component: L·cosφ along the unbanked-lift direction (0, cosγ, −sinγ).
     // Exactly vertical in a level turn; tilts forward by γ in a descending one, just
     // like the whole lift vector. The lateral component is then liftTip − supportEnd
     // = (−L·sinφ, 0, 0): purely horizontal, so the two legs sum exactly to lift.
-    const supportEnd = new THREE.Vector3(0, Math.cos(this._gamma), -Math.sin(this._gamma))
-      .multiplyScalar(L * Math.cos(bankRad))
+    const supportEnd = liftOrigin.clone().addScaledVector(
+      new THREE.Vector3(0, Math.cos(this._gamma), -Math.sin(this._gamma)),
+      L * Math.cos(bankRad),
+    )
     const lateralEnd = liftTip.clone()
-
-    const ORIGIN = new THREE.Vector3()
 
     this._liftCompMat!.opacity = 1
 
@@ -1109,7 +1158,7 @@ class FourForcesElement extends HTMLElement {
       line.computeLineDistances()
       line.visible = true
     }
-    setLine(this._liftCompSupport,  ORIGIN,     supportEnd)
+    setLine(this._liftCompSupport,  liftOrigin, supportEnd)
     setLine(this._liftCompLateral!, supportEnd, lateralEnd)
 
     // Fade cones in as bank increases from zero (same pattern as weight components)
@@ -1129,7 +1178,7 @@ class FourForcesElement extends HTMLElement {
         cone.material.opacity = coneOpacity
         cone.visible = true
       }
-      placeCone(this._liftCompSupportArrow!, ORIGIN,     supportEnd)
+      placeCone(this._liftCompSupportArrow!, liftOrigin, supportEnd)
       placeCone(this._liftCompLateralArrow!, supportEnd, lateralEnd)
     }
   }

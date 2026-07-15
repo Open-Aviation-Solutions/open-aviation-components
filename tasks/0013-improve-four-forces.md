@@ -396,3 +396,30 @@ the component cones at 0.09. All heads are now one fixed size
 (`ARROW_HEAD_LEN` 0.07, width 0.55×), with the component cones matched to it
 (ArrowHelper's headWidth is a diameter; ConeGeometry takes a radius, hence
 the halving in `COMP_CONE_R`).
+
+## Follow-up: force application points (2026-07-15)
+
+All four arrows previously originated at one point, hiding the moment story
+(the four-forces couples). Each arrow now starts at its force's application
+point — display-only; the physics stays a point-mass model with no moment
+dynamics.
+
+- Weight always acts at the CoG, which *is* the scene origin — the datum, so
+  it has no offset attribute (`model-offset` is the tool for aligning a
+  model's CoG to the origin).
+- `lift-offset`, `thrust-offset`, `drag-offset` attributes take body-frame
+  `x,y,z` tuples (comma-separated, scene units, matching the `model-offset`
+  convention), rotated with the airframe quaternion each tick
+  (`_forceOrigins()`).
+- Defaults calibrated against the F.2B model (bbox y −0.23..0.40,
+  z −0.89..0.46): lift `0,0,-0.15` (CP aft of CoG → nose-down couple with
+  weight), thrust `0,0.05,0.5` (drawn from the propeller, thrust line below
+  the centre of drag → nose-up couple), drag `0,0.25,0` (wing cell — biplane
+  drag is dominated by wings/struts/rigging).
+- Only the offset perpendicular to a force's line of action changes its
+  moment, so lift needs no vertical offset (which also keeps the Lift label
+  on-canvas) and the forward part of the thrust offset is purely cosmetic.
+- The lift decomposition chain starts at the lift application point; the
+  weight chain stays at the CoG. Balance comparisons (glide drag vs
+  along-path weight) are now parallel-and-equal rather than coincident —
+  docs wording updated from "tip-to-tip" to "equal and opposite".
