@@ -334,3 +334,23 @@ and deviations discovered during implementation:
   descending-turn demonstration; `v_1` attribute description mentions the
   stall-AoA calibration; component `INSTRUCTIONS.md` describes the (v, γ)
   model and the stale `index.js` reference is fixed.
+
+## Follow-up: common arrow scale (2026-07-15)
+
+PR review showed the split display scale (lift/weight on the weight scale,
+thrust/drag magnified ~6.5× on the T_MAX scale) breaks visual balance the
+moment the weight decomposition is drawn: in the glide, the drag arrow
+appeared ~6.5× longer than the along-path weight component that is exactly
+cancelling it, making a genuinely settled state look unbalanced. It also
+exaggerated thrust's apparent vertical contribution in climbs.
+
+Superseding the "arrows keep the magnified T_MAX display scale" note above:
+all four arrows now share one scale, `ARROW_SCALE = BASE_ARROW / T_MAX`,
+anchored on thrust/drag (rather than lift/weight) so those arrows keep their
+previous world size and stay outside the fuselage. Lift/weight arrows grow to
+≈ 9.8 world units, and the default camera pulls back ~5.6× to fit; dash
+sizes, component-arrowhead cones, the lift/weight arrowhead cap, and the
+particle stream (extent, dot size, flow speed) are scaled with it so the
+on-screen appearance is otherwise unchanged. With one scale, every balance is
+visually true: glide drag matches the along-path weight component tip-to-tip,
+and thrust is honestly a small fraction of weight.

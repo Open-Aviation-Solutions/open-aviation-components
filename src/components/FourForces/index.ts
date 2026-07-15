@@ -13,7 +13,10 @@ import type { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js
 const sheet = new CSSStyleSheet()
 sheet.replaceSync(styles)
 
-const DEFAULT_CAMERA_POSITION = [2.8, 1.78, 3.30] as const
+// Pulled back so the full-length lift/weight arrows (≈ ±9.8 world units plus
+// labels) fit in frame, and at a lower elevation than the pre-common-scale
+// view — a raised camera makes the upward lift arrow project off the top.
+const DEFAULT_CAMERA_POSITION = [17.2, 7.0, 21.0] as const
 
 // ── Physics constants ─────────────────────────────────────────────────────────
 // Point-mass longitudinal model in the vertical plane. State: airspeed v
@@ -27,9 +30,13 @@ const DEFAULT_CAMERA_POSITION = [2.8, 1.78, 3.30] as const
 //   dγ/dt = G_NORM·(L·cos φ − W·cos γ) / (W·v)   (lift curves the path; φ = bank)
 //
 // Lift and drag share the dynamic-pressure scale AERO_K, so L/D = CL/CD
-// (≈ 10.9 at cruise) and glides come out at realistic angles. The thrust/drag
-// ARROWS are still drawn magnified (normalised by T_MAX, as before) so they
-// stay visible next to lift/weight — a display convention, not physics.
+// (≈ 10.9 at cruise) and glides come out at realistic angles. All four ARROWS
+// share one display scale (ARROW_SCALE), anchored so the thrust arrow at full
+// power keeps its traditional length and clears the fuselage — lift and weight
+// are correspondingly long (≈ 9.8 world units). With a common scale, balanced
+// forces have equal arrows: in a glide the drag arrow matches weight's
+// along-path component tip-to-tip, and thrust really is a small fraction of
+// weight, as it is for a real aeroplane.
 //
 // The α = θ − γ coupling is the load-bearing feedback: pitch up → α and lift
 // rise → the path curves upward → α relaxes. With no special cases it yields:
@@ -55,9 +62,14 @@ const DEFAULT_CAMERA_POSITION = [2.8, 1.78, 3.30] as const
 // needs ≈ 79% physics thrust at the minimum-drag CL.
 const WEIGHT     = 0.7
 const T_MAX      = 0.10704
-const BASE_ARROW = 1.5   // world units — arrow length at equilibrium
-const COMP_CONE_H = BASE_ARROW * 0.06  // weight-component arrowhead height
-const COMP_CONE_R = BASE_ARROW * 0.03  // weight-component arrowhead radius
+const BASE_ARROW  = 1.5  // world units — thrust arrow at full physics power
+const ARROW_SCALE = BASE_ARROW / T_MAX  // world units per force unit — one common
+                                        // scale for every arrow (≈ 14), anchored
+                                        // on T_MAX so thrust/drag stay outside
+                                        // the fuselage
+const WEIGHT_ARROW = WEIGHT * ARROW_SCALE  // ≈ 9.8 — weight/lift arrow length
+const COMP_CONE_H = WEIGHT_ARROW * 0.06  // weight-component arrowhead height
+const COMP_CONE_R = WEIGHT_ARROW * 0.03  // weight-component arrowhead radius
 const AERO_K     = 1.476 // dynamic-pressure scale shared by lift and drag
 const CL0 = 0.30, CL_A = 2.5
 const CD0 = 0.030, INV_PIARe = 0.060  // higher induced drag → min-drag ≈ 82 kts → Vy ≠ Vx
@@ -86,10 +98,13 @@ const VSI_HSWEEP = Math.PI * 0.55
 const VSI_MAX    = 1.0   // normalised (±1 maps to ±full deflection)
 
 // ── Particle stream constants ─────────────────────────────────────────────────
+// Stream dimensions, dot size and flow speed are all scaled ~5.6× with the
+// pulled-back default camera so the on-screen appearance is unchanged.
 const N_PART           = 120
-const STREAM_HALF      = 3.5   // half-length along flow axis
-const STREAM_CROSS     = 1.3   // cross-section radius
-const FLOW_SPEED_SCALE = 3.0   // world-units/s at speed=1 (cruise)
+const STREAM_HALF      = 19.5  // half-length along flow axis
+const STREAM_CROSS     = 7.2   // cross-section radius
+const FLOW_SPEED_SCALE = 16.7  // world-units/s at speed=1 (cruise)
+const PART_SIZE        = 0.39  // particle dot size (world units)
 
 class FourForcesElement extends HTMLElement {
   static observedAttributes = ['height', 'model-path', 'model-rotation', 'model-offset', 'v_ne', 'v_no', 'v_1', 'cruise-kts', 'banking', 'show-help']
@@ -306,7 +321,7 @@ class FourForcesElement extends HTMLElement {
     this._speed = 1.0
     this._gamma = 0.0
     this._vsi   = 0.0
-    this._forces    = { lift: BASE_ARROW, weight: BASE_ARROW, thrust: BASE_ARROW * 0.6, drag: BASE_ARROW * 0.6 }
+    this._forces    = { lift: WEIGHT_ARROW, weight: WEIGHT_ARROW, thrust: BASE_ARROW * 0.6, drag: BASE_ARROW * 0.6 }
 
     // ── Three.js handles ──────────────────────────────────────────────────────
     this._THREE          = null
@@ -554,8 +569,8 @@ class FourForcesElement extends HTMLElement {
     // Weight component dashed lines
     this._weightCompMat = new THREE.LineDashedMaterial({
       color: 0x60a5fa,
-      dashSize: 0.12,
-      gapSize: 0.07,
+      dashSize: WEIGHT_ARROW * 0.08,
+      gapSize: WEIGHT_ARROW * 0.045,
       transparent: true,
       opacity: 0,
     })
@@ -588,8 +603,8 @@ class FourForcesElement extends HTMLElement {
     // Lift component dashed lines (green — shown when banking)
     this._liftCompMat = new THREE.LineDashedMaterial({
       color: 0x22c55e,
-      dashSize: 0.12,
-      gapSize: 0.07,
+      dashSize: WEIGHT_ARROW * 0.08,
+      gapSize: WEIGHT_ARROW * 0.045,
       transparent: true,
       opacity: 0,
     })
@@ -633,7 +648,7 @@ class FourForcesElement extends HTMLElement {
     this._partGeo.setAttribute('position', new THREE.BufferAttribute(this._partPositions, 3))
     this._particles = new THREE.Points(this._partGeo, new THREE.PointsMaterial({
       color: 0x7dd3fc,
-      size: 0.07,
+      size: PART_SIZE,
       transparent: true,
       opacity: 0.65,
       depthWrite: false,
@@ -837,12 +852,12 @@ class FourForcesElement extends HTMLElement {
       this._gamma = Math.max(-GAMMA_MAX, Math.min(GAMMA_MAX, this._gamma + dgamma * dt))
     }
 
-    // Lift/weight arrows share the weight scale; thrust/drag arrows are drawn
-    // on the magnified T_MAX scale so they stay visible — display only.
-    this._forces.lift   = Math.max(0.04, (lift   / WEIGHT) * BASE_ARROW)
-    this._forces.weight = BASE_ARROW
-    this._forces.thrust = Math.max(0.04, (thrust / T_MAX)  * BASE_ARROW)
-    this._forces.drag   = Math.max(0.04, (drag   / T_MAX)  * BASE_ARROW)
+    // All four arrows share ARROW_SCALE, so balanced forces have equal arrows —
+    // e.g. in a glide the drag arrow matches weight's along-path component.
+    this._forces.lift   = Math.max(0.04, lift   * ARROW_SCALE)
+    this._forces.weight = WEIGHT_ARROW
+    this._forces.thrust = Math.max(0.04, thrust * ARROW_SCALE)
+    this._forces.drag   = Math.max(0.04, drag   * ARROW_SCALE)
 
     // The VSI is purely kinematic: vertical speed = v·sinγ. γ is an integrated
     // state, so the needle is already smooth — no separate filtering needed.
@@ -874,7 +889,10 @@ class FourForcesElement extends HTMLElement {
       const arrow = this._arrowHelpers[id]
       if (!arrow) continue
       const len     = this._forces[id]
-      const headLen = Math.min(len * 0.28, 0.22)
+      // Head grows with the arrow up to a cap sized for the long lift/weight
+      // arrows; short thrust/drag arrows stay under the cap and keep their
+      // proportions.
+      const headLen = Math.min(len * 0.28, WEIGHT_ARROW * 0.09)
       arrow.setDirection(dirs[id])
       arrow.setLength(len, headLen, headLen * 0.55)
       arrow.visible = len > 0.05
@@ -908,8 +926,13 @@ class FourForcesElement extends HTMLElement {
     for (const id of ['lift', 'weight', 'thrust', 'drag'] as const) {
       const el = labelRefs[id]
       if (!el) continue
-      const labelOffset = (id === 'thrust' || id === 'drag') ? 1.35 : 1.1
-      const tip = tipDirs[id].clone().multiplyScalar(this._forces[id] * labelOffset)
+      // Lift/weight labels sit just past their long arrows; thrust/drag labels
+      // get a fixed world offset past the tip so the text clears the fuselage
+      // even though those arrows are short.
+      const labelDist = (id === 'thrust' || id === 'drag')
+        ? this._forces[id] + 1.0
+        : this._forces[id] * 1.04
+      const tip = tipDirs[id].clone().multiplyScalar(labelDist)
       tip.project(this._camera)
       const x = (tip.x *  0.5 + 0.5) * cw
       const y = (tip.y * -0.5 + 0.5) * ch
