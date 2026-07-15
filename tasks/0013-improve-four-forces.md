@@ -387,3 +387,12 @@ Fixed by decomposing lift within the plane perpendicular to the velocity
 The two legs still sum exactly to the lift vector, so the dashed chain closes
 tip-to-tip on the lift arrow. Fields renamed `_liftCompVert`/`_liftCompHoriz`
 → `_liftCompSupport`/`_liftCompLateral`.
+
+## Follow-up: uniform arrowheads (2026-07-15)
+
+Review found the thrust/drag heads (at the 0.07 floor) the right size —
+discernible without dominating — while lift/weight sat at the 0.22 cap and
+the component cones at 0.09. All heads are now one fixed size
+(`ARROW_HEAD_LEN` 0.07, width 0.55×), with the component cones matched to it
+(ArrowHelper's headWidth is a diameter; ConeGeometry takes a radius, hence
+the halving in `COMP_CONE_R`).

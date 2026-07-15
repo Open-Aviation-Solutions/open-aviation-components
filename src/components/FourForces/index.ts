@@ -61,8 +61,14 @@ const WEIGHT     = 0.7
 const T_MAX      = 0.10704
 const BASE_ARROW = 1.5   // world units — weight arrow length
 const MODEL_OPACITY_DEFAULT = 0.15  // translucent airframe (see `model-opacity`)
-const COMP_CONE_H = BASE_ARROW * 0.06  // weight-component arrowhead height
-const COMP_CONE_R = BASE_ARROW * 0.03  // weight-component arrowhead radius
+// One arrowhead size for everything — sized to suit the short true-scale
+// thrust/drag arrows; lift/weight and the component cones match it so no
+// head dominates. ArrowHelper's headWidth scales a 0.5-radius cone (so it is
+// a diameter); ConeGeometry takes a true radius, hence the halving.
+const ARROW_HEAD_LEN   = 0.07
+const ARROW_HEAD_WIDTH = ARROW_HEAD_LEN * 0.55
+const COMP_CONE_H = ARROW_HEAD_LEN        // component arrowhead height
+const COMP_CONE_R = ARROW_HEAD_WIDTH / 2  // component arrowhead radius
 const AERO_K     = 1.476 // dynamic-pressure scale shared by lift and drag
 const CL0 = 0.30, CL_A = 2.5
 const CD0 = 0.030, INV_PIARe = 0.060  // higher induced drag → min-drag ≈ 82 kts → Vy ≠ Vx
@@ -938,12 +944,9 @@ class FourForcesElement extends HTMLElement {
     for (const id of ['lift', 'weight', 'thrust', 'drag'] as const) {
       const arrow = this._arrowHelpers[id]
       if (!arrow) continue
-      const len     = this._forces[id]
-      // Head grows with the arrow up to a cap, with a floor so the true-scale
-      // thrust/drag arrows (~0.1–0.2 long) keep a legible head.
-      const headLen = Math.min(Math.max(len * 0.28, 0.07), 0.22)
+      const len = this._forces[id]
       arrow.setDirection(dirs[id])
-      arrow.setLength(len, headLen, headLen * 0.55)
+      arrow.setLength(len, ARROW_HEAD_LEN, ARROW_HEAD_WIDTH)
       arrow.visible = len > 0.05
     }
   }
