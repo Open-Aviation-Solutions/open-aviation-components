@@ -451,3 +451,20 @@ the top-back corner. Weight's base is derived, not configured — it slides up
 weight's own line of action (world-vertical, NOT the body axis, so the shaft
 still passes through the CoG when banked) to max(thrust_y, drag_y, 0). The
 weight decomposition chain starts at the weight base accordingly.
+
+### Follow-up: arrows at physical application points, grey trace-backs (2026-07-15)
+
+After using the moment rectangle, direction changed: the coloured arrows
+should originate where each force actually acts — lift on the top wing at
+the quarter-chord (`0,0.4,0.18`), thrust at the propeller boss
+(`0,0.15,0.45`), drag at the wing trailing edge (`0,0,-0.01`), weight at the
+CoG — so the force placement itself is instructive. The moment quadrilateral
+is preserved by solid grey lines (`_updateMomentLines()`, not dotted — grey
+alone was judged enough) that extend each force's line of action back from
+the arrow base to the farther of its crossings with the perpendicular pair's
+lines (lift/weight ↔ thrust/drag), computed as closest-point parameters so
+each trace-back stays exactly collinear with its force even when bank makes
+the lines skew. A trace-back hides with its force arrow (thrust at idle).
+Weight's base needs no derivation any more — it just starts at the CoG.
+The shared force-direction math moved into `_forceDirections()`, used by
+arrows, labels, and trace-backs alike.

@@ -70,33 +70,26 @@ const ARROW_HEAD_WIDTH = ARROW_HEAD_LEN * 0.55
 const COMP_CONE_H = ARROW_HEAD_LEN        // component arrowhead height
 const COMP_CONE_R = ARROW_HEAD_WIDTH / 2  // component arrowhead radius
 // Force application points (body frame "x,y,z", scene units, relative to the
-// CoG at the origin; the aircraft spans ~2 units). Weight always acts at the
-// CoG — that is the datum the others are measured from, so it has no offset
-// attribute. The four bases sit at the corners of the "moment rectangle":
-// in straight and level flight the lift and weight lines of action are its
-// vertical edges, the thrust and drag lines its horizontal edges, so the
-// couples are visible as the rectangle's width (lift/weight arm) and height
-// (thrust/drag arm). Since weight must act at the CoG, the CoG is a corner
-// and one horizontal line passes through it. Defaults for the F.2B: lift at
-// the wing quarter-chord, forward of the CoG (lift/weight couple pitches
-// nose-up), thrust on the propeller axis above the drag line (thrust/drag
-// couple pitches nose-down, opposing it), drag drawn from the lift line at
-// CoG height. Only the offset perpendicular to a force's line of action
-// changes its moment, so sliding a base along its own line (e.g. drag
-// forward to the lift line) is presentational, and the arm sizes are
-// exaggerated — a true-scale lift/weight arm would be invisible.
-//
-// The defaults use two shared corners so every shaft traces an edge: lift
-// (up) and drag (aft) both start at the bottom-front corner — the wing
-// quarter-chord at CoG height — while thrust (forward) starts at the
-// top-back corner directly above the CoG. Weight's base is derived, not
-// configured: it slides up weight's own line of action (world-vertical
-// through the CoG) to the higher of the thrust/drag lines, tracing the back
-// edge down through the CoG.
+// CoG at the origin; the aircraft spans ~2 units). Each coloured arrow
+// starts where its force physically acts on the default F.2B: lift on the
+// top wing at the quarter-chord, thrust at the propeller boss, drag at the
+// wing trailing edge, weight at the CoG — the datum the others are measured
+// from, so it has no offset attribute. Because the points don't coincide
+// the forces form pitching couples, and a solid grey line extends each
+// force's line of action back from the arrow base to the farther of its
+// crossings with the perpendicular pair's lines (lift/weight ↔ thrust/drag)
+// — see _updateMomentLines. Together the four lines trace the "moment
+// quadrilateral", a rectangle in straight and level flight whose width is
+// the lift/weight arm and height the thrust/drag arm: lift forward of the
+// CoG is a nose-up couple with weight, the thrust line above the drag line
+// a nose-down couple opposing it. Only the offset perpendicular to a
+// force's line of action changes its moment — where along the line the
+// arrow sits is presentational. Display-only: the physics stays a
+// point-mass model with no moment dynamics.
 const FORCE_OFFSET_DEFAULTS: Record<'lift' | 'thrust' | 'drag', readonly [number, number, number]> = {
-  lift:   [0, 0, 0.18],
-  thrust: [0, 0.15, 0],
-  drag:   [0, 0, 0.18],
+  lift:   [0, 0.40, 0.18],
+  thrust: [0, 0.15, 0.45],
+  drag:   [0, 0, -0.01],
 }
 const AERO_K     = 1.476 // dynamic-pressure scale shared by lift and drag
 const CL0 = 0.30, CL_A = 2.5
@@ -204,6 +197,8 @@ class FourForcesElement extends HTMLElement {
   private _liftCompLateral: THREE.Line | null = null
   private _liftCompSupportArrow: THREE.Mesh<THREE.ConeGeometry, THREE.MeshBasicMaterial> | null = null
   private _liftCompLateralArrow: THREE.Mesh<THREE.ConeGeometry, THREE.MeshBasicMaterial> | null = null
+  private _momentLineMat: THREE.LineBasicMaterial | null = null
+  private _momentLines: Partial<Record<'lift' | 'weight' | 'thrust' | 'drag', THREE.Line>> = {}
   private _arrowHelpers: Record<string, THREE.ArrowHelper> = {}
   // Original airframe material state, captured before translucency is applied
   // so a `model-opacity` of 1 can restore the materials losslessly.
@@ -390,6 +385,8 @@ class FourForcesElement extends HTMLElement {
     this._liftCompLateral      = null
     this._liftCompSupportArrow = null
     this._liftCompLateralArrow = null
+    this._momentLineMat  = null
+    this._momentLines    = {}
     this._arrowHelpers   = {}
 
     // ── ASI speed limits (null = not configured) ─────────────────────────────
@@ -660,6 +657,22 @@ class FourForcesElement extends HTMLElement {
       this._arrowHelpers[def.id] = arrow
     })
 
+    // Moment quadrilateral trace-backs — one solid grey line per force,
+    // extending its line of action back from the arrow base (see
+    // _updateMomentLines).
+    this._momentLineMat = new THREE.LineBasicMaterial({ color: 0x64748b, transparent: true, opacity: 0.85 })
+    for (const id of ['lift', 'weight', 'thrust', 'drag'] as const) {
+      const buf  = new Float32Array(6)
+      const geo  = new THREE.BufferGeometry()
+      const attr = new THREE.BufferAttribute(buf, 3)
+      attr.setUsage(THREE.DynamicDrawUsage)
+      geo.setAttribute('position', attr)
+      const line = new THREE.Line(geo, this._momentLineMat)
+      line.visible = false
+      this._scene!.add(line)
+      this._momentLines[id] = line
+    }
+
     // Weight component dashed lines
     this._weightCompMat = new THREE.LineDashedMaterial({
       color: 0x60a5fa,
@@ -879,6 +892,7 @@ class FourForcesElement extends HTMLElement {
 
     this._tick(frameDt)
     this._updateArrows()
+    this._updateMomentLines()
     this._updateLabels()
     this._updateWeightComponents()
     this._updateLiftComponents()
@@ -967,42 +981,42 @@ class FourForcesElement extends HTMLElement {
 
   // ── Arrow update ──────────────────────────────────────────────────────────────
   // World-space application points of the forces: the body-frame offsets
-  // rotated with the airframe. Weight always acts through the CoG (the
-  // origin); its base slides up its own line of action — world-vertical, NOT
-  // the body axis, so the shaft passes through the CoG even when banked — to
-  // the higher of the thrust/drag lines, tracing the quadrilateral's back edge.
+  // rotated with the airframe. Weight always acts through the CoG — the
+  // scene origin, fixed in world space.
   _forceOrigins() {
     const THREE = this._THREE!
     const q = this._aircraftGroup!.quaternion
-    const weightBaseHeight = Math.max(this._forceOffsets.thrust[1], this._forceOffsets.drag[1], 0)
     return {
       lift:   new THREE.Vector3(...this._forceOffsets.lift).applyQuaternion(q),
-      weight: new THREE.Vector3(0, weightBaseHeight, 0),
+      weight: new THREE.Vector3(0, 0, 0),
       thrust: new THREE.Vector3(...this._forceOffsets.thrust).applyQuaternion(q),
       drag:   new THREE.Vector3(...this._forceOffsets.drag).applyQuaternion(q),
     }
   }
 
-  _updateArrows() {
+  // Unit direction of each force in world space. Lift is perpendicular to the
+  // relative airflow (the flight path), rolled about it by the bank angle:
+  // rotating (0, cosγ, −sinγ) around the flight path (0, sinγ, cosγ) by φ
+  // gives (−sinφ, cosγ·cosφ, −sinγ·cosφ) — exact and already unit length.
+  // Thrust is along the body axis; drag opposes motion through the air —
+  // along −(flight path), not the body axis.
+  _forceDirections() {
     const THREE = this._THREE!
-    if (!this._aircraftGroup) return
-    const q = this._aircraftGroup.quaternion
-
-    const bankRad = this._bankDeg * Math.PI / 180
+    const q = this._aircraftGroup!.quaternion
+    const bankRad  = this._bankDeg * Math.PI / 180
     const sinGamma = Math.sin(this._gamma)
     const cosGamma = Math.cos(this._gamma)
-    const dirs = {
-      // Lift is perpendicular to the relative airflow (the flight path), rolled
-      // about it by the bank angle: rotating (0, cosγ, −sinγ) around the flight
-      // path (0, sinγ, cosγ) by φ gives (−sinφ, cosγ·cosφ, −sinγ·cosφ) — exact
-      // and already unit length.
+    return {
       lift:   new THREE.Vector3(-Math.sin(bankRad), cosGamma * Math.cos(bankRad), -sinGamma * Math.cos(bankRad)),
       weight: new THREE.Vector3(0, -1, 0),
       thrust: new THREE.Vector3(0, 0,  1).applyQuaternion(q).normalize(),
-      // Drag opposes motion through the air — along −(flight path), not the body axis
       drag:   new THREE.Vector3(0, -sinGamma, -cosGamma),
     }
+  }
 
+  _updateArrows() {
+    if (!this._aircraftGroup) return
+    const dirs = this._forceDirections()
     const origins = this._forceOrigins()
     for (const id of ['lift', 'weight', 'thrust', 'drag'] as const) {
       const arrow = this._arrowHelpers[id]
@@ -1015,23 +1029,60 @@ class FourForcesElement extends HTMLElement {
     }
   }
 
+  // ── Moment quadrilateral trace-backs ──────────────────────────────────────────
+  // Each force's line of action extends back from the arrow base with a solid
+  // grey line to the farther of its two crossings with the perpendicular
+  // pair's lines (lift/weight ↔ thrust/drag). Together the four lines trace
+  // the moment quadrilateral — a rectangle in straight and level flight —
+  // making the pitching couples visible. Under bank the lines can be skew;
+  // each trace-back ends at the point on its own line closest to the other
+  // line, so it stays exactly collinear with its force.
+  _updateMomentLines() {
+    if (!this._aircraftGroup) return
+    const origins = this._forceOrigins()
+    const dirs = this._forceDirections()
+
+    // Signed distance along (base, dir) — both unit dirs — to the point on
+    // that line closest to the line (otherBase, otherDir).
+    const towardLine = (base: THREE.Vector3, dir: THREE.Vector3, otherBase: THREE.Vector3, otherDir: THREE.Vector3) => {
+      const dirDot = dir.dot(otherDir)
+      const denom = 1 - dirDot * dirDot
+      if (denom < 1e-6) return 0  // parallel — no crossing to trace to
+      const gap = base.clone().sub(otherBase)
+      return (dirDot * otherDir.dot(gap) - dir.dot(gap)) / denom
+    }
+
+    const CROSSING_PAIRS = {
+      lift:   ['thrust', 'drag'],
+      weight: ['thrust', 'drag'],
+      thrust: ['lift', 'weight'],
+      drag:   ['lift', 'weight'],
+    } as const
+    for (const id of ['lift', 'weight', 'thrust', 'drag'] as const) {
+      const line = this._momentLines[id]
+      if (!line) continue
+      // No line of action to show when the force (and its arrow) has vanished
+      if (this._forces[id] <= 0.05) { line.visible = false; continue }
+      const crossings = CROSSING_PAIRS[id].map(other =>
+        towardLine(origins[id], dirs[id], origins[other], dirs[other]))
+      const traceEnd = Math.min(...crossings, 0)
+      if (traceEnd > -0.02) { line.visible = false; continue }
+      const end = origins[id].clone().addScaledVector(dirs[id], traceEnd)
+      const attr = line.geometry.attributes['position'] as THREE.BufferAttribute
+      attr.setXYZ(0, origins[id].x, origins[id].y, origins[id].z)
+      attr.setXYZ(1, end.x, end.y, end.z)
+      attr.needsUpdate = true
+      line.visible = true
+    }
+  }
+
   // ── Label positioning ─────────────────────────────────────────────────────────
   _updateLabels() {
-    const THREE = this._THREE!
     if (!this._camera || !this._root || !this._aircraftGroup) return
     const cw = this._root.clientWidth
     const ch = this._root.clientHeight
 
-    const q = this._aircraftGroup.quaternion
-    const bankRad = this._bankDeg * Math.PI / 180
-    const sinGamma = Math.sin(this._gamma)
-    const cosGamma = Math.cos(this._gamma)
-    const tipDirs = {
-      lift:   new THREE.Vector3(-Math.sin(bankRad), cosGamma * Math.cos(bankRad), -sinGamma * Math.cos(bankRad)),
-      weight: new THREE.Vector3(0, -1, 0),
-      thrust: new THREE.Vector3(0, 0,  1).applyQuaternion(q).normalize(),
-      drag:   new THREE.Vector3(0, -sinGamma, -cosGamma),
-    }
+    const tipDirs = this._forceDirections()
     const labelRefs = {
       lift:   this._labelLift,
       weight: this._labelWeight,
@@ -1083,8 +1134,7 @@ class FourForcesElement extends HTMLElement {
     // Exact perpendicular projection of weight onto -liftDir: W / sqrt(1 + fpTilt²).
     // This guarantees weightTip − perpEnd = W·fpTilt/(1+fpTilt²)·(0,−fpTilt,1),
     // which is exactly parallel to the flight-path / drag direction.
-    // The chain starts where the weight arrow does (its base sits on the
-    // higher of the thrust/drag lines, above the CoG).
+    // The chain starts where the weight arrow does: at the CoG.
     const weightOrigin = this._forceOrigins().weight
     const perpLen   = W / Math.sqrt(1 + fpTilt * fpTilt)
     const perpEnd   = weightOrigin.clone().addScaledVector(liftDir, -perpLen)
@@ -1515,6 +1565,8 @@ class FourForcesElement extends HTMLElement {
     this._weightCompAlongArrow?.material.dispose()
     this._liftCompSupport?.geometry.dispose()
     this._liftCompLateral?.geometry.dispose()
+    for (const line of Object.values(this._momentLines)) line?.geometry.dispose()
+    this._momentLineMat?.dispose()
     this._liftCompSupportArrow?.geometry.dispose()
     this._liftCompSupportArrow?.material.dispose()
     this._liftCompLateralArrow?.geometry.dispose()
@@ -1534,6 +1586,8 @@ class FourForcesElement extends HTMLElement {
     this._liftCompLateral      = null
     this._liftCompSupportArrow = null
     this._liftCompLateralArrow = null
+    this._momentLineMat = null
+    this._momentLines   = {}
     this._arrowHelpers  = {}
     this._airframeMatOriginals = null
   }
