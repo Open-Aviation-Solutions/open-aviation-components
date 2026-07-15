@@ -63,10 +63,12 @@ const BASE_ARROW = 1.5   // world units — weight arrow length
 const MODEL_OPACITY_DEFAULT = 0.15  // translucent airframe (see `model-opacity`)
 // One arrowhead size for everything — sized to suit the short true-scale
 // thrust/drag arrows; lift/weight and the component cones match it so no
-// head dominates. ArrowHelper's headWidth scales a 0.5-radius cone (so it is
-// a diameter); ConeGeometry takes a true radius, hence the halving.
+// head dominates. ARROW_HEAD_WIDTH is a diameter; ConeGeometry takes a true
+// radius, hence the halving. Force arrow shafts are solid cylinders in the
+// force colour so they stand out against the thin grey trace-back lines.
 const ARROW_HEAD_LEN   = 0.07
 const ARROW_HEAD_WIDTH = ARROW_HEAD_LEN * 0.55
+const ARROW_SHAFT_RADIUS = ARROW_HEAD_WIDTH * 0.3
 const COMP_CONE_H = ARROW_HEAD_LEN        // component arrowhead height
 const COMP_CONE_R = ARROW_HEAD_WIDTH / 2  // component arrowhead radius
 // Force application points (body frame "x,y,z", scene units, relative to the
@@ -199,7 +201,11 @@ class FourForcesElement extends HTMLElement {
   private _liftCompLateralArrow: THREE.Mesh<THREE.ConeGeometry, THREE.MeshBasicMaterial> | null = null
   private _momentLineMat: THREE.LineBasicMaterial | null = null
   private _momentLines: Partial<Record<'lift' | 'weight' | 'thrust' | 'drag', THREE.Line>> = {}
-  private _arrowHelpers: Record<string, THREE.ArrowHelper> = {}
+  private _forceArrows: Record<string, {
+    group: THREE.Group
+    shaft: THREE.Mesh<THREE.CylinderGeometry, THREE.MeshBasicMaterial>
+    head: THREE.Mesh<THREE.ConeGeometry, THREE.MeshBasicMaterial>
+  }> = {}
   // Original airframe material state, captured before translucency is applied
   // so a `model-opacity` of 1 can restore the materials losslessly.
   private _airframeMatOriginals: AirframeMatOriginal[] | null = null
@@ -387,7 +393,7 @@ class FourForcesElement extends HTMLElement {
     this._liftCompLateralArrow = null
     this._momentLineMat  = null
     this._momentLines    = {}
-    this._arrowHelpers   = {}
+    this._forceArrows    = {}
 
     // ── ASI speed limits (null = not configured) ─────────────────────────────
     this._vne      = null
@@ -637,7 +643,9 @@ class FourForcesElement extends HTMLElement {
     this._aircraftGroup = new THREE.Group()
     this._scene.add(this._aircraftGroup)
 
-    // Arrow helpers
+    // Force arrows — a solid cylinder shaft plus cone head per force, both in
+    // the force colour, built pointing up +Y with the base at the group
+    // origin. _updateArrows positions, orients, and scales them each tick.
     const ARROW_DEFS = [
       { id: 'lift',   color: 0x22c55e },
       { id: 'weight', color: 0x60a5fa },
@@ -645,16 +653,17 @@ class FourForcesElement extends HTMLElement {
       { id: 'drag',   color: 0xef4444 },
     ]
     ARROW_DEFS.forEach(def => {
-      const arrow = new THREE.ArrowHelper(
-        new THREE.Vector3(0, 1, 0),
-        new THREE.Vector3(0, 0, 0),
-        BASE_ARROW,
-        def.color,
-        BASE_ARROW * 0.25,
-        BASE_ARROW * 0.14
-      )
-      this._scene!.add(arrow)
-      this._arrowHelpers[def.id] = arrow
+      const material = new THREE.MeshBasicMaterial({ color: def.color })
+      const shaftGeo = new THREE.CylinderGeometry(ARROW_SHAFT_RADIUS, ARROW_SHAFT_RADIUS, 1, 12)
+      shaftGeo.translate(0, 0.5, 0)  // unit length, base at the origin — scale.y sets the length
+      const shaft = new THREE.Mesh(shaftGeo, material)
+      const headGeo = new THREE.ConeGeometry(ARROW_HEAD_WIDTH / 2, ARROW_HEAD_LEN, 12)
+      headGeo.translate(0, ARROW_HEAD_LEN / 2, 0)  // base at the local origin, tip at +ARROW_HEAD_LEN
+      const head = new THREE.Mesh(headGeo, material)
+      const group = new THREE.Group()
+      group.add(shaft, head)
+      this._scene!.add(group)
+      this._forceArrows[def.id] = { group, shaft, head }
     })
 
     // Moment quadrilateral trace-backs — one solid grey line per force,
@@ -1015,17 +1024,22 @@ class FourForcesElement extends HTMLElement {
   }
 
   _updateArrows() {
+    const THREE = this._THREE!
     if (!this._aircraftGroup) return
     const dirs = this._forceDirections()
     const origins = this._forceOrigins()
+    const Y_AXIS = new THREE.Vector3(0, 1, 0)
     for (const id of ['lift', 'weight', 'thrust', 'drag'] as const) {
-      const arrow = this._arrowHelpers[id]
+      const arrow = this._forceArrows[id]
       if (!arrow) continue
       const len = this._forces[id]
-      arrow.position.copy(origins[id])
-      arrow.setDirection(dirs[id])
-      arrow.setLength(len, ARROW_HEAD_LEN, ARROW_HEAD_WIDTH)
-      arrow.visible = len > 0.05
+      arrow.group.position.copy(origins[id])
+      arrow.group.quaternion.setFromUnitVectors(Y_AXIS, dirs[id])
+      // Head keeps its fixed size; the shaft fills the rest of the length.
+      const shaftLen = Math.max(len - ARROW_HEAD_LEN, 0)
+      arrow.shaft.scale.y = Math.max(shaftLen, 1e-4)
+      arrow.head.position.y = shaftLen
+      arrow.group.visible = len > 0.05
     }
   }
 
@@ -1567,6 +1581,11 @@ class FourForcesElement extends HTMLElement {
     this._liftCompLateral?.geometry.dispose()
     for (const line of Object.values(this._momentLines)) line?.geometry.dispose()
     this._momentLineMat?.dispose()
+    for (const arrow of Object.values(this._forceArrows)) {
+      arrow.shaft.geometry.dispose()
+      arrow.head.geometry.dispose()
+      arrow.shaft.material.dispose()  // shared with the head
+    }
     this._liftCompSupportArrow?.geometry.dispose()
     this._liftCompSupportArrow?.material.dispose()
     this._liftCompLateralArrow?.geometry.dispose()
@@ -1588,7 +1607,7 @@ class FourForcesElement extends HTMLElement {
     this._liftCompLateralArrow = null
     this._momentLineMat = null
     this._momentLines   = {}
-    this._arrowHelpers  = {}
+    this._forceArrows   = {}
     this._airframeMatOriginals = null
   }
 }

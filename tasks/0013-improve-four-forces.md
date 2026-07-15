@@ -468,3 +468,8 @@ the lines skew. A trace-back hides with its force arrow (thrust at idle).
 Weight's base needs no derivation any more — it just starts at the CoG.
 The shared force-direction math moved into `_forceDirections()`, used by
 arrows, labels, and trace-backs alike.
+
+Refinement: the force arrows themselves draw with solid cylinder shafts
+(`ARROW_SHAFT_RADIUS`, plus the existing cone heads) in the force colour,
+replacing THREE.ArrowHelper's 1-px line shafts, so the actual forces stand
+out clearly against the thin grey trace-back lines.
