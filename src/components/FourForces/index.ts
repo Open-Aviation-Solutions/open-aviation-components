@@ -85,8 +85,16 @@ const COMP_CONE_R = ARROW_HEAD_WIDTH / 2  // component arrowhead radius
 // changes its moment, so sliding a base along its own line (e.g. drag
 // forward to the lift line) is presentational, and the arm sizes are
 // exaggerated — a true-scale lift/weight arm would be invisible.
+//
+// The defaults use two shared corners so every shaft traces an edge: lift
+// (up) and drag (aft) both start at the bottom-front corner — the wing
+// quarter-chord at CoG height — while thrust (forward) starts at the
+// top-back corner directly above the CoG. Weight's base is derived, not
+// configured: it slides up weight's own line of action (world-vertical
+// through the CoG) to the higher of the thrust/drag lines, tracing the back
+// edge down through the CoG.
 const FORCE_OFFSET_DEFAULTS: Record<'lift' | 'thrust' | 'drag', readonly [number, number, number]> = {
-  lift:   [0, 0.15, 0.18],
+  lift:   [0, 0, 0.18],
   thrust: [0, 0.15, 0],
   drag:   [0, 0, 0.18],
 }
@@ -959,13 +967,17 @@ class FourForcesElement extends HTMLElement {
 
   // ── Arrow update ──────────────────────────────────────────────────────────────
   // World-space application points of the forces: the body-frame offsets
-  // rotated with the airframe. Weight always acts at the CoG (the origin).
+  // rotated with the airframe. Weight always acts through the CoG (the
+  // origin); its base slides up its own line of action — world-vertical, NOT
+  // the body axis, so the shaft passes through the CoG even when banked — to
+  // the higher of the thrust/drag lines, tracing the quadrilateral's back edge.
   _forceOrigins() {
     const THREE = this._THREE!
     const q = this._aircraftGroup!.quaternion
+    const weightBaseHeight = Math.max(this._forceOffsets.thrust[1], this._forceOffsets.drag[1], 0)
     return {
       lift:   new THREE.Vector3(...this._forceOffsets.lift).applyQuaternion(q),
-      weight: new THREE.Vector3(0, 0, 0),
+      weight: new THREE.Vector3(0, weightBaseHeight, 0),
       thrust: new THREE.Vector3(...this._forceOffsets.thrust).applyQuaternion(q),
       drag:   new THREE.Vector3(...this._forceOffsets.drag).applyQuaternion(q),
     }
@@ -1071,9 +1083,12 @@ class FourForcesElement extends HTMLElement {
     // Exact perpendicular projection of weight onto -liftDir: W / sqrt(1 + fpTilt²).
     // This guarantees weightTip − perpEnd = W·fpTilt/(1+fpTilt²)·(0,−fpTilt,1),
     // which is exactly parallel to the flight-path / drag direction.
-    const perpLen = W / Math.sqrt(1 + fpTilt * fpTilt)
-    const perpEnd   = liftDir.clone().multiplyScalar(-perpLen)
-    const weightTip = new THREE.Vector3(0, -W, 0)
+    // The chain starts where the weight arrow does (its base sits on the
+    // higher of the thrust/drag lines, above the CoG).
+    const weightOrigin = this._forceOrigins().weight
+    const perpLen   = W / Math.sqrt(1 + fpTilt * fpTilt)
+    const perpEnd   = weightOrigin.clone().addScaledVector(liftDir, -perpLen)
+    const weightTip = weightOrigin.clone().add(new THREE.Vector3(0, -W, 0))
 
     const setLine = (line: THREE.Line, start: THREE.Vector3, end: THREE.Vector3) => {
       const attr = line.geometry.attributes['position'] as THREE.BufferAttribute
@@ -1084,9 +1099,8 @@ class FourForcesElement extends HTMLElement {
       line.visible = true
     }
 
-    const ORIGIN = new THREE.Vector3()
-    setLine(this._weightCompPerp,  ORIGIN,  perpEnd)
-    setLine(this._weightCompAlong!, perpEnd, weightTip)
+    setLine(this._weightCompPerp,   weightOrigin, perpEnd)
+    setLine(this._weightCompAlong!, perpEnd,      weightTip)
 
     // Fade cone arrowheads in as the horizontal component grows.
     // Both share the same opacity so they appear/disappear together.
@@ -1106,7 +1120,7 @@ class FourForcesElement extends HTMLElement {
         cone.material.opacity = coneOpacity
         cone.visible = true
       }
-      placeCone(this._weightCompPerpArrow!,  ORIGIN,  perpEnd)
+      placeCone(this._weightCompPerpArrow!,  weightOrigin, perpEnd)
       placeCone(this._weightCompAlongArrow!, perpEnd, weightTip)
     }
   }

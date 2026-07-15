@@ -439,3 +439,15 @@ weight line — thrust above drag gives the opposing nose-down couple), drag
 the way to the forward-most vector"). Arms are exaggerated for visibility; a
 true-scale lift/weight arm (≈ D/L × the thrust/drag arm) would be invisible.
 Labels now clamp to the canvas edges since offsets can push a tip off-screen.
+
+### Correction 2: vertical shafts trace the quadrilateral edges (2026-07-15)
+
+Review: lift and weight bases must also sit on the horizontal lines so their
+shafts trace the vertical edges — lift extends down to the lower of the
+thrust/drag lines, weight up to the higher. Final arrangement (two shared
+corners): lift `0,0,0.18` and drag `0,0,0.18` both at the bottom-front
+corner (quarter-chord at CoG height); thrust `0,0.15,0` and weight both at
+the top-back corner. Weight's base is derived, not configured — it slides up
+weight's own line of action (world-vertical, NOT the body axis, so the shaft
+still passes through the CoG when banked) to max(thrust_y, drag_y, 0). The
+weight decomposition chain starts at the weight base accordingly.
