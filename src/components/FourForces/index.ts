@@ -73,10 +73,13 @@ const COMP_CONE_H = ARROW_HEAD_LEN        // component arrowhead height
 const COMP_CONE_R = ARROW_HEAD_WIDTH / 2  // component arrowhead radius
 // Force application points (body frame "x,y,z", scene units, relative to the
 // CoG at the origin; the aircraft spans ~2 units). Each coloured arrow
-// starts where its force physically acts on the default F.2B: lift on the
-// top wing at the quarter-chord, thrust at the propeller boss, drag at the
-// wing trailing edge, weight at the CoG — the datum the others are measured
-// from, so it has no offset attribute. Because the points don't coincide
+// starts where its force physically acts on the default F.2B: lift high in
+// the wing cell at the quarter-chord (just under the top wing), thrust at
+// the propeller boss, drag at the wing-cell trailing edge — above the CoG
+// because the biplane cell and its rigging dominate the drag, but below the
+// thrust line since the undercarriage and lower fuselage pull the centroid
+// down — and weight at the CoG, the datum the others are measured from, so
+// it has no offset attribute. Because the points don't coincide
 // the forces form pitching couples, and a solid grey line extends each
 // force's line of action back from the arrow base to the farther of its
 // crossings with the perpendicular pair's lines (lift/weight ↔ thrust/drag)
@@ -89,9 +92,9 @@ const COMP_CONE_R = ARROW_HEAD_WIDTH / 2  // component arrowhead radius
 // arrow sits is presentational. Display-only: the physics stays a
 // point-mass model with no moment dynamics.
 const FORCE_OFFSET_DEFAULTS: Record<'lift' | 'thrust' | 'drag', readonly [number, number, number]> = {
-  lift:   [0, 0.40, 0.18],
+  lift:   [0, 0.30, 0.18],
   thrust: [0, 0.15, 0.45],
-  drag:   [0, 0, -0.01],
+  drag:   [0, 0.10, -0.01],
 }
 const AERO_K     = 1.476 // dynamic-pressure scale shared by lift and drag
 const CL0 = 0.30, CL_A = 2.5

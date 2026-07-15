@@ -473,3 +473,11 @@ Refinement: the force arrows themselves draw with solid cylinder shafts
 (`ARROW_SHAFT_RADIUS`, plus the existing cone heads) in the force colour,
 replacing THREE.ArrowHelper's 1-px line shafts, so the actual forces stand
 out clearly against the thin grey trace-back lines.
+
+Calibration follow-up: lift lowered to `0,0.3,0.18` so it springs from the
+wing structure just under the top wing, and drag raised to `0,0.1,-0.01` —
+the earlier `y=0` was inherited from the old rectangle design, not measured;
+on this biplane the wing cell and rigging dominate the drag, so its centroid
+sits above the CoG (kept just below the thrust line because the
+undercarriage and lower fuselage pull it down, preserving the opposing
+nose-down couple).
