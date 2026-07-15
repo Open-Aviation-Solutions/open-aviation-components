@@ -348,18 +348,20 @@ First attempt: one common scale anchored on thrust/drag, with lift/weight
 grown to ≈ 9.8 world units and the camera pulled back ~5.6× to fit. Review
 found the aircraft became too small to read alongside the towering arrows.
 
-Final design — an **"Actual scale" toggle** (checkbox, bottom-right, synced
-over BroadcastChannel like the sliders):
+Second attempt: an "Actual scale" checkbox that ghosted the airframe and drew
+all four arrows on the weight scale, with the magnified display as the
+default. Review found the ghosted true-scale view good enough to be the
+*only* view, so the toggle was removed again.
 
-- **Default (unchecked):** the original presentation — lift/weight on the
-  weight scale, thrust/drag magnified ~6.5× (÷ `T_MAX`), original close-in
-  camera and particle stream. Readable for briefings; scales are mixed.
-- **Checked:** the airframe fades to a ghost (materials at 0.15 opacity —
-  kept faintly visible so pitch/bank context isn't lost) and all four arrows
-  draw on the weight scale. Hiding the fuselage is what makes this possible:
-  true-scale thrust (≤ ~15% of weight) and drag (~9% at cruise) no longer
-  have to clear it. Every balance is then visually exact: glide drag matches
-  the along-path weight component tip-to-tip, a banked turn's vertical lift
-  component matches weight. Arrowheads gain a small floor (0.07) so the short
-  arrows keep legible heads; thrust/drag labels use a fixed offset past the
-  tip.
+Final design — **one true scale, translucent airframe**:
+
+- All four arrows draw on the weight scale. True-scale thrust (≤ ~15% of
+  weight) and drag (~9% at cruise) are workable because the airframe renders
+  translucent — kept faintly visible so pitch/bank context isn't lost — via a
+  `model-opacity` attribute (default 0.15; `1` restores the original
+  materials, captured before translucency is applied). Every balance is
+  visually exact: glide drag matches the along-path weight component
+  tip-to-tip, a banked turn's vertical lift component matches weight.
+- The original close-in camera and particle stream are unchanged; arrowheads
+  gain a small floor (0.07) so the short arrows keep legible heads, and
+  thrust/drag labels sit a fixed offset past the tip.
