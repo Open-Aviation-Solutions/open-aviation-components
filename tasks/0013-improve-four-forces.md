@@ -481,3 +481,12 @@ on this biplane the wing cell and rigging dominate the drag, so its centroid
 sits above the CoG (kept just below the thrust line because the
 undercarriage and lower fuselage pull it down, preserving the opposing
 nose-down couple).
+
+CoG placement: the scene origin (weight's application point and the
+pitch/bank pivot) moved forward and up within the airframe — the engine and
+pilot sit forward, so the default model shifts in the GLTF load callback
+changed from z −0.2 / y +0.1 to z −0.32 / y +0.05. The origin now sits under
+the front cockpit near mid-chord, just below the thrust line. All force
+offset defaults re-expressed relative to the new origin (same physical
+spots): lift `0,0.25,0.06`, thrust `0,0.1,0.33`, drag `0,0.05,-0.13`. The
+lift/weight arm narrows to ~0.06 — honest to a CoG near the quarter-chord.

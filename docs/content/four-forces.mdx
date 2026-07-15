@@ -76,9 +76,9 @@ Experimenting here costs nothing and reinforces what you cover in the air.
 | `height` | `400px` | CSS height of the component |
 | `model-path` | `/aircraft.glb` | URL to the GLTF aircraft model file |
 | `model-opacity` | `0.15` | Airframe opacity (0–1). The translucent airframe keeps the true-scale thrust/drag arrows visible; `1` renders the model fully opaque |
-| `lift-offset` | `0,0.3,0.18` | Application point of lift as a body-frame `x,y,z` offset from the CoG, in scene units (the aircraft spans ~2). Default: high in the wing cell at the quarter-chord |
-| `thrust-offset` | `0,0.15,0.45` | Application point of thrust, same format. Default: the propeller boss |
-| `drag-offset` | `0,0.1,-0.01` | Application point of drag, same format. Default: the wing-cell trailing edge, above the CoG but below the thrust line |
+| `lift-offset` | `0,0.25,0.06` | Application point of lift as a body-frame `x,y,z` offset from the CoG, in scene units (the aircraft spans ~2). Default: high in the wing cell at the quarter-chord |
+| `thrust-offset` | `0,0.1,0.33` | Application point of thrust, same format. Default: the propeller boss |
+| `drag-offset` | `0,0.05,-0.13` | Application point of drag, same format. Default: the wing-cell trailing edge, above the CoG but below the thrust line |
 | `v_ne` | — | Never-exceed speed (kts). Sets ASI scale maximum and draws red radial line |
 | `v_no` | — | Normal operating speed (kts). Top of green arc, bottom of yellow arc |
 | `v_1` | — | Stall speed clean (kts). Bottom of green arc; also calibrates the stalling angle of attack (a generic default applies when unset) |

@@ -92,9 +92,9 @@ const COMP_CONE_R = ARROW_HEAD_WIDTH / 2  // component arrowhead radius
 // arrow sits is presentational. Display-only: the physics stays a
 // point-mass model with no moment dynamics.
 const FORCE_OFFSET_DEFAULTS: Record<'lift' | 'thrust' | 'drag', readonly [number, number, number]> = {
-  lift:   [0, 0.30, 0.18],
-  thrust: [0, 0.15, 0.45],
-  drag:   [0, 0.10, -0.01],
+  lift:   [0, 0.25, 0.06],
+  thrust: [0, 0.10, 0.33],
+  drag:   [0, 0.05, -0.13],
 }
 const AERO_K     = 1.476 // dynamic-pressure scale shared by lift and drag
 const CL0 = 0.30, CL_A = 2.5
@@ -836,8 +836,12 @@ class FourForcesElement extends HTMLElement {
       const scaledBox = new THREE.Box3().setFromObject(obj)
       const scaledCenter = new THREE.Vector3(); scaledBox.getCenter(scaledCenter)
       const scaledSize = new THREE.Vector3(); scaledBox.getSize(scaledSize)
+      // The scene origin is the CoG: the weight arrow hangs from it and the
+      // aircraft pitches/banks about it. These default shifts place the
+      // F.2B's CoG forward of the bbox centre (engine and pilot sit forward)
+      // and just below the thrust line.
       obj.position.sub(scaledCenter)
-      obj.position.z -= 0.2
+      obj.position.z -= 0.32
 
       const offsetAttr = this.getAttribute('model-offset')
       if (offsetAttr) {
@@ -846,7 +850,7 @@ class FourForcesElement extends HTMLElement {
         obj.position.y += oy
         obj.position.z += oz
       }
-      obj.position.y += 0.1
+      obj.position.y += 0.05
 
       this._orbitControls!.target.set(0, 0, 0)
       this._camera!.position.set(...DEFAULT_CAMERA_POSITION)

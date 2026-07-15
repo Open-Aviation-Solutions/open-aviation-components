@@ -18,7 +18,7 @@ The core component is a self-contained 3D aerodynamic force visualizer implement
 - `height` (default `'400px'`) — CSS height of the component
 - `model-path` (default `'/aircraft.glb'`) — URL to the GLTF model
 - `model-opacity` (default `0.15`) — airframe opacity (0–1); `1` restores the model's original materials
-- `lift-offset` / `thrust-offset` / `drag-offset` — force application points as body-frame `x,y,z` offsets from the CoG, scene units (defaults `0,0.3,0.18` / `0,0.15,0.45` / `0,0.1,-0.01` — wing-cell quarter-chord, propeller boss, wing-cell trailing edge); weight has no offset — it acts at the CoG. Grey trace-back lines extend the lines of action to show the moment quadrilateral
+- `lift-offset` / `thrust-offset` / `drag-offset` — force application points as body-frame `x,y,z` offsets from the CoG, scene units (defaults `0,0.25,0.06` / `0,0.1,0.33` / `0,0.05,-0.13` — wing-cell quarter-chord, propeller boss, wing-cell trailing edge); weight has no offset — it acts at the CoG (the scene origin, placed at the F.2B's CoG by the default model shifts in the GLTF load callback). Grey trace-back lines extend the lines of action to show the moment quadrilateral
 - `v_ne`, `v_no`, `v_1`, `cruise-kts` — airspeed envelope values for ASI gauge
 - `banking` — boolean; when present, shows bank angle slider and lift component decomposition
 
