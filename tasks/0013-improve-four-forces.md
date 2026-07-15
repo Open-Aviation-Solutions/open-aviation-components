@@ -365,3 +365,25 @@ Final design — **one true scale, translucent airframe**:
 - The original close-in camera and particle stream are unchanged; arrowheads
   gain a small floor (0.07) so the short arrows keep legible heads, and
   thrust/drag labels sit a fixed offset past the tip.
+
+## Follow-up: lift decomposition in the perpendicular plane (2026-07-15)
+
+Review noticed the banked-lift decomposition's "horizontal" component was
+simply lift minus its world-vertical part, so it contained a fore-aft (Z)
+term whenever the flight path was inclined — and with `banking` enabled it
+drew a phantom "horizontal lift" arrow in a wings-level glide, where there is
+no turn at all.
+
+Fixed by decomposing lift within the plane perpendicular to the velocity
+(where the lift vector lives — bank just rotates it in that plane):
+
+- **support** — L·cosφ along the unbanked-lift direction: the lift left to
+  oppose weight (exactly vertical in a level turn, tilted forward by γ in a
+  descending one, like the whole lift vector)
+- **lateral** — L·sinφ along the lateral axis: exactly horizontal, purely the
+  centripetal force turning the aircraft; zero wings-level, so the phantom
+  arrow is gone
+
+The two legs still sum exactly to the lift vector, so the dashed chain closes
+tip-to-tip on the lift arrow. Fields renamed `_liftCompVert`/`_liftCompHoriz`
+→ `_liftCompSupport`/`_liftCompLateral`.

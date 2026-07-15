@@ -9,7 +9,7 @@ The core component is a self-contained 3D aerodynamic force visualizer implement
 - **Arrow objects** — scaled 3D arrows for each of the four forces; `_updateArrows()` repositions them each tick. All four draw on the weight scale, so proportions are true (thrust tops out at ~15% of weight) and balanced forces have equal arrows. The airframe renders translucent (`_applyAirframeOpacity()`, `model-opacity` attribute, default 0.15) so the short thrust/drag arrows aren't hidden inside the fuselage
 - **2D label overlay** — `_updateLabels()` projects 3D arrow tips to screen coordinates and positions absolutely-placed HTML labels
 - **Weight component decomposition** — `_updateWeightComponents()` shows weight resolved along and perpendicular to the flight path during climbs/descents
-- **Lift component decomposition** — `_updateLiftComponents()` (shown when `banking` attribute is set) shows lift resolved into vertical and horizontal components in the plane perpendicular to airflow
+- **Lift component decomposition** — `_updateLiftComponents()` (shown when `banking` attribute is set) resolves lift within the plane perpendicular to the velocity: a supporting component (L·cosφ, along the unbanked-lift direction, opposing weight) and a lateral component (L·sinφ, exactly horizontal — the centripetal force turning the aircraft). The lateral component is zero wings-level, so no decomposition shows in an unbanked glide
 - **Particle system** — 120 particles animate an airflow stream
 - **Gauge canvases** — ASI and VSI instruments drawn imperatively onto separate overlay `<canvas>` elements (`.ff-gauge-asi` top-left, `.ff-gauge-vsi` top-right); attitude indicator includes bank rotation
 - **BroadcastChannel** — syncs state across browser tabs

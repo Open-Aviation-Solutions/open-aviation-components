@@ -158,10 +158,10 @@ class FourForcesElement extends HTMLElement {
   private _weightCompPerpArrow: THREE.Mesh<THREE.ConeGeometry, THREE.MeshBasicMaterial> | null = null
   private _weightCompAlongArrow: THREE.Mesh<THREE.ConeGeometry, THREE.MeshBasicMaterial> | null = null
   private _liftCompMat: THREE.LineDashedMaterial | null = null
-  private _liftCompVert: THREE.Line | null = null
-  private _liftCompHoriz: THREE.Line | null = null
-  private _liftCompVertArrow: THREE.Mesh<THREE.ConeGeometry, THREE.MeshBasicMaterial> | null = null
-  private _liftCompHorizArrow: THREE.Mesh<THREE.ConeGeometry, THREE.MeshBasicMaterial> | null = null
+  private _liftCompSupport: THREE.Line | null = null
+  private _liftCompLateral: THREE.Line | null = null
+  private _liftCompSupportArrow: THREE.Mesh<THREE.ConeGeometry, THREE.MeshBasicMaterial> | null = null
+  private _liftCompLateralArrow: THREE.Mesh<THREE.ConeGeometry, THREE.MeshBasicMaterial> | null = null
   private _arrowHelpers: Record<string, THREE.ArrowHelper> = {}
   // Original airframe material state, captured before translucency is applied
   // so a `model-opacity` of 1 can restore the materials losslessly.
@@ -343,11 +343,11 @@ class FourForcesElement extends HTMLElement {
     this._weightCompAlong = null
     this._weightCompPerpArrow  = null
     this._weightCompAlongArrow = null
-    this._liftCompMat        = null
-    this._liftCompVert       = null
-    this._liftCompHoriz      = null
-    this._liftCompVertArrow  = null
-    this._liftCompHorizArrow = null
+    this._liftCompMat          = null
+    this._liftCompSupport      = null
+    this._liftCompLateral      = null
+    this._liftCompSupportArrow = null
+    this._liftCompLateralArrow = null
     this._arrowHelpers   = {}
 
     // ── ASI speed limits (null = not configured) ─────────────────────────────
@@ -662,8 +662,8 @@ class FourForcesElement extends HTMLElement {
       this._scene!.add(line)
       return line
     }
-    this._liftCompVert  = makeLiftLine()
-    this._liftCompHoriz = makeLiftLine()
+    this._liftCompSupport = makeLiftLine()
+    this._liftCompLateral = makeLiftLine()
 
     // Cone arrowheads for lift component lines
     const liftConeMat = new THREE.MeshBasicMaterial({ color: 0x22c55e, transparent: true, opacity: 0 })
@@ -674,8 +674,8 @@ class FourForcesElement extends HTMLElement {
       this._scene!.add(mesh)
       return mesh
     }
-    this._liftCompVertArrow  = makeLiftCone()
-    this._liftCompHorizArrow = makeLiftCone()
+    this._liftCompSupportArrow = makeLiftCone()
+    this._liftCompLateralArrow = makeLiftCone()
 
     // Particle stream — initialise positions scattered through the stream volume
     this._partPositions = new Float32Array(N_PART * 3)
@@ -1054,25 +1054,29 @@ class FourForcesElement extends HTMLElement {
   }
 
   // ── Lift components ───────────────────────────────────────────────────────────
-  // When banking, lift decomposes into vertical (cos θ) and horizontal (sin θ) components.
-  // The horizontal component provides centripetal force for the turn; the vertical component
-  // must support the aircraft's weight, which is why more back-pressure is needed in a turn.
+  // When banking, lift decomposes within the plane perpendicular to the velocity
+  // (where the lift vector lives — bank just rotates it in that plane):
+  //   support: L·cosφ along the unbanked-lift direction — the lift left to oppose
+  //     weight, which is why more back-pressure is needed in a turn
+  //   lateral: L·sinφ along the lateral axis — exactly horizontal, the centripetal
+  //     force turning the aircraft; zero wings-level, so no component chain appears
+  //     in an unbanked glide
   _updateLiftComponents() {
     const THREE = this._THREE!
-    if (!this._liftCompVert || !this._aircraftGroup) return
+    if (!this._liftCompSupport || !this._aircraftGroup) return
 
     if (!this._showBank) {
-      this._liftCompVert.visible         = false
-      this._liftCompHoriz!.visible       = false
-      this._liftCompVertArrow!.visible   = false
-      this._liftCompHorizArrow!.visible  = false
-      this._liftCompMat!.opacity         = 0
+      this._liftCompSupport.visible        = false
+      this._liftCompLateral!.visible       = false
+      this._liftCompSupportArrow!.visible  = false
+      this._liftCompLateralArrow!.visible  = false
+      this._liftCompMat!.opacity           = 0
       return
     }
 
     // Use the actual lift direction (same vector as drawn by _updateArrows) so the
-    // components lie in the bank plane perpendicular to the airflow and always join
-    // to the real lift tip — including the Z offset introduced by the flight path angle.
+    // components always join to the real lift tip — including the Z offset
+    // introduced by the flight path angle.
     const bankRad = this._bankDeg * Math.PI / 180
     const liftDir = new THREE.Vector3(
       -Math.sin(bankRad),
@@ -1082,14 +1086,13 @@ class FourForcesElement extends HTMLElement {
     const L       = this._forces.lift
     const liftTip = liftDir.clone().multiplyScalar(L)
 
-    // Decompose lift into world-vertical (Y) and the remainder.
-    //   vertical:   (0, liftTip.y, 0) — purely along world Y, so the dashed arrow is directly
-    //     comparable to the weight arrow in screen space regardless of camera angle.
-    //   horizontal: liftTip − vertical = (liftTip.x, 0, liftTip.z) — the centripetal X part
-    //     plus any forward Z from FPA tilt (visible as a forward lean in descending turns,
-    //     reinforcing the same "lift tilts forward in a descent" lesson as the main arrow).
-    const vertEnd  = new THREE.Vector3(0, liftTip.y, 0)
-    const horizEnd = liftTip.clone()
+    // Support component: L·cosφ along the unbanked-lift direction (0, cosγ, −sinγ).
+    // Exactly vertical in a level turn; tilts forward by γ in a descending one, just
+    // like the whole lift vector. The lateral component is then liftTip − supportEnd
+    // = (−L·sinφ, 0, 0): purely horizontal, so the two legs sum exactly to lift.
+    const supportEnd = new THREE.Vector3(0, Math.cos(this._gamma), -Math.sin(this._gamma))
+      .multiplyScalar(L * Math.cos(bankRad))
+    const lateralEnd = liftTip.clone()
 
     const ORIGIN = new THREE.Vector3()
 
@@ -1103,17 +1106,17 @@ class FourForcesElement extends HTMLElement {
       line.computeLineDistances()
       line.visible = true
     }
-    setLine(this._liftCompVert,   ORIGIN,  vertEnd)
-    setLine(this._liftCompHoriz!, vertEnd, horizEnd)
+    setLine(this._liftCompSupport,  ORIGIN,     supportEnd)
+    setLine(this._liftCompLateral!, supportEnd, lateralEnd)
 
     // Fade cones in as bank increases from zero (same pattern as weight components)
     const CONE_H = COMP_CONE_H
-    const horizLen = horizEnd.clone().sub(vertEnd).length()   // X (centripetal) + Z (forward in descent)
-    const coneOpacity = Math.min(1, horizLen / (CONE_H * 2))
+    const lateralLen = lateralEnd.clone().sub(supportEnd).length()   // L·sinφ
+    const coneOpacity = Math.min(1, lateralLen / (CONE_H * 2))
 
     if (coneOpacity < 0.01) {
-      this._liftCompVertArrow!.visible  = false
-      this._liftCompHorizArrow!.visible = false
+      this._liftCompSupportArrow!.visible = false
+      this._liftCompLateralArrow!.visible = false
     } else {
       const Y_AXIS = new THREE.Vector3(0, 1, 0)
       const placeCone = (cone: THREE.Mesh<THREE.ConeGeometry, THREE.MeshBasicMaterial>, start: THREE.Vector3, end: THREE.Vector3) => {
@@ -1123,8 +1126,8 @@ class FourForcesElement extends HTMLElement {
         cone.material.opacity = coneOpacity
         cone.visible = true
       }
-      placeCone(this._liftCompVertArrow!,  ORIGIN,  vertEnd)
-      placeCone(this._liftCompHorizArrow!, vertEnd, horizEnd)
+      placeCone(this._liftCompSupportArrow!, ORIGIN,     supportEnd)
+      placeCone(this._liftCompLateralArrow!, supportEnd, lateralEnd)
     }
   }
 
@@ -1436,12 +1439,12 @@ class FourForcesElement extends HTMLElement {
     this._weightCompPerpArrow?.material.dispose()
     this._weightCompAlongArrow?.geometry.dispose()
     this._weightCompAlongArrow?.material.dispose()
-    this._liftCompVert?.geometry.dispose()
-    this._liftCompHoriz?.geometry.dispose()
-    this._liftCompVertArrow?.geometry.dispose()
-    this._liftCompVertArrow?.material.dispose()
-    this._liftCompHorizArrow?.geometry.dispose()
-    this._liftCompHorizArrow?.material.dispose()
+    this._liftCompSupport?.geometry.dispose()
+    this._liftCompLateral?.geometry.dispose()
+    this._liftCompSupportArrow?.geometry.dispose()
+    this._liftCompSupportArrow?.material.dispose()
+    this._liftCompLateralArrow?.geometry.dispose()
+    this._liftCompLateralArrow?.material.dispose()
 
     this._animFrameId   = null
     this._sceneReady    = false
@@ -1452,11 +1455,11 @@ class FourForcesElement extends HTMLElement {
     this._aircraftGroup = null
     this._broadcastChannel = null
     this._partGeo       = null
-    this._liftCompMat        = null
-    this._liftCompVert       = null
-    this._liftCompHoriz      = null
-    this._liftCompVertArrow  = null
-    this._liftCompHorizArrow = null
+    this._liftCompMat          = null
+    this._liftCompSupport      = null
+    this._liftCompLateral      = null
+    this._liftCompSupportArrow = null
+    this._liftCompLateralArrow = null
     this._arrowHelpers  = {}
     this._airframeMatOriginals = null
   }
