@@ -72,17 +72,23 @@ const COMP_CONE_R = ARROW_HEAD_WIDTH / 2  // component arrowhead radius
 // Force application points (body frame "x,y,z", scene units, relative to the
 // CoG at the origin; the aircraft spans ~2 units). Weight always acts at the
 // CoG — that is the datum the others are measured from, so it has no offset
-// attribute. Defaults match the classic couples arrangement for the Bristol
-// F.2B: lift (centre of pressure) slightly aft of the CoG — lift/weight
-// couple pitches nose-down; the centre of drag up at the wing cell, with the
-// thrust line below it and drawn from the propeller — thrust/drag couple
-// pitches nose-up, opposing it. Only the offset perpendicular to a force's
-// line of action changes its moment, so e.g. the forward component of the
-// thrust offset is purely where the arrow is drawn from.
+// attribute. The four bases sit at the corners of the "moment rectangle":
+// in straight and level flight the lift and weight lines of action are its
+// vertical edges, the thrust and drag lines its horizontal edges, so the
+// couples are visible as the rectangle's width (lift/weight arm) and height
+// (thrust/drag arm). Since weight must act at the CoG, the CoG is a corner
+// and one horizontal line passes through it. Defaults for the F.2B: lift at
+// the wing quarter-chord, forward of the CoG (lift/weight couple pitches
+// nose-up), thrust on the propeller axis above the drag line (thrust/drag
+// couple pitches nose-down, opposing it), drag drawn from the lift line at
+// CoG height. Only the offset perpendicular to a force's line of action
+// changes its moment, so sliding a base along its own line (e.g. drag
+// forward to the lift line) is presentational, and the arm sizes are
+// exaggerated — a true-scale lift/weight arm would be invisible.
 const FORCE_OFFSET_DEFAULTS: Record<'lift' | 'thrust' | 'drag', readonly [number, number, number]> = {
-  lift:   [0, 0, -0.15],
-  thrust: [0, 0.05, 0.5],
-  drag:   [0, 0.25, 0],
+  lift:   [0, 0.15, 0.18],
+  thrust: [0, 0.15, 0],
+  drag:   [0, 0, 0.18],
 }
 const AERO_K     = 1.476 // dynamic-pressure scale shared by lift and drag
 const CL0 = 0.30, CL_A = 2.5
@@ -1032,8 +1038,10 @@ class FourForcesElement extends HTMLElement {
         : this._forces[id] * 1.1
       const tip = origins[id].clone().addScaledVector(tipDirs[id], labelDist)
       tip.project(this._camera)
-      const x = (tip.x *  0.5 + 0.5) * cw
-      const y = (tip.y * -0.5 + 0.5) * ch
+      // Clamp into the canvas — application-point offsets can push a tip
+      // right up to (or past) the edge.
+      const x = Math.min(Math.max((tip.x *  0.5 + 0.5) * cw, 24), cw - 24)
+      const y = Math.min(Math.max((tip.y * -0.5 + 0.5) * ch, 10), ch - 10)
       el.style.left = `${x}px`
       el.style.top  = `${y}px`
       el.style.display = this._forces[id] > 0.08 ? 'block' : 'none'

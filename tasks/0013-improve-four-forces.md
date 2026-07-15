@@ -423,3 +423,19 @@ dynamics.
   weight chain stays at the CoG. Balance comparisons (glide drag vs
   along-path weight) are now parallel-and-equal rather than coincident —
   docs wording updated from "tip-to-tip" to "equal and opposite".
+
+### Correction: bases form a moment rectangle (2026-07-15)
+
+Review clarified the intent: the four bases should sit at the corners of a
+rectangle in straight and level flight, with each force's line of action
+containing an edge, so the couples read as the rectangle's width and height.
+Since weight must act at the CoG, the CoG is a corner and one horizontal line
+passes through it — with lift at the wing quarter-chord (z ≈ +0.18 on this
+model, measured from a side-view screenshot: LE ≈ +0.26, chord ≈ 0.27),
+that line is drag's. Final defaults: lift `0,0.15,0.18` (top-front corner,
+nose-up couple with weight), thrust `0,0.15,0` (top-back corner, on the
+weight line — thrust above drag gives the opposing nose-down couple), drag
+`0,0,0.18` (bottom-front corner, on the lift line — "the drag base goes all
+the way to the forward-most vector"). Arms are exaggerated for visibility; a
+true-scale lift/weight arm (≈ D/L × the thrust/drag arm) would be invisible.
+Labels now clamp to the canvas edges since offsets can push a tip off-screen.
