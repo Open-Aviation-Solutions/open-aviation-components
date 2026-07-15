@@ -13,10 +13,7 @@ import type { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js
 const sheet = new CSSStyleSheet()
 sheet.replaceSync(styles)
 
-// Pulled back so the full-length lift/weight arrows (≈ ±9.8 world units plus
-// labels) fit in frame, and at a lower elevation than the pre-common-scale
-// view — a raised camera makes the upward lift arrow project off the top.
-const DEFAULT_CAMERA_POSITION = [17.2, 7.0, 21.0] as const
+const DEFAULT_CAMERA_POSITION = [2.8, 1.78, 3.30] as const
 
 // ── Physics constants ─────────────────────────────────────────────────────────
 // Point-mass longitudinal model in the vertical plane. State: airspeed v
@@ -30,13 +27,13 @@ const DEFAULT_CAMERA_POSITION = [17.2, 7.0, 21.0] as const
 //   dγ/dt = G_NORM·(L·cos φ − W·cos γ) / (W·v)   (lift curves the path; φ = bank)
 //
 // Lift and drag share the dynamic-pressure scale AERO_K, so L/D = CL/CD
-// (≈ 10.9 at cruise) and glides come out at realistic angles. All four ARROWS
-// share one display scale (ARROW_SCALE), anchored so the thrust arrow at full
-// power keeps its traditional length and clears the fuselage — lift and weight
-// are correspondingly long (≈ 9.8 world units). With a common scale, balanced
-// forces have equal arrows: in a glide the drag arrow matches weight's
-// along-path component tip-to-tip, and thrust really is a small fraction of
-// weight, as it is for a real aeroplane.
+// (≈ 10.9 at cruise) and glides come out at realistic angles. By default the
+// thrust/drag ARROWS are drawn magnified (normalised by T_MAX) so they stay
+// visible next to lift/weight and outside the fuselage — a display convention,
+// not physics. The "Actual scale" toggle fades the airframe to a ghost and
+// draws all four arrows on the weight scale: thrust and drag shrink to their
+// true fraction of weight, and every balance is visually exact — in a glide
+// the drag arrow matches weight's along-path component tip-to-tip.
 //
 // The α = θ − γ coupling is the load-bearing feedback: pitch up → α and lift
 // rise → the path curves upward → α relaxes. With no special cases it yields:
@@ -62,14 +59,11 @@ const DEFAULT_CAMERA_POSITION = [17.2, 7.0, 21.0] as const
 // needs ≈ 79% physics thrust at the minimum-drag CL.
 const WEIGHT     = 0.7
 const T_MAX      = 0.10704
-const BASE_ARROW  = 1.5  // world units — thrust arrow at full physics power
-const ARROW_SCALE = BASE_ARROW / T_MAX  // world units per force unit — one common
-                                        // scale for every arrow (≈ 14), anchored
-                                        // on T_MAX so thrust/drag stay outside
-                                        // the fuselage
-const WEIGHT_ARROW = WEIGHT * ARROW_SCALE  // ≈ 9.8 — weight/lift arrow length
-const COMP_CONE_H = WEIGHT_ARROW * 0.06  // weight-component arrowhead height
-const COMP_CONE_R = WEIGHT_ARROW * 0.03  // weight-component arrowhead radius
+const BASE_ARROW = 1.5   // world units — weight arrow length (and full thrust
+                         // in the default magnified display)
+const GHOST_OPACITY = 0.15  // airframe opacity in "Actual scale" mode
+const COMP_CONE_H = BASE_ARROW * 0.06  // weight-component arrowhead height
+const COMP_CONE_R = BASE_ARROW * 0.03  // weight-component arrowhead radius
 const AERO_K     = 1.476 // dynamic-pressure scale shared by lift and drag
 const CL0 = 0.30, CL_A = 2.5
 const CD0 = 0.030, INV_PIARe = 0.060  // higher induced drag → min-drag ≈ 82 kts → Vy ≠ Vx
@@ -98,13 +92,18 @@ const VSI_HSWEEP = Math.PI * 0.55
 const VSI_MAX    = 1.0   // normalised (±1 maps to ±full deflection)
 
 // ── Particle stream constants ─────────────────────────────────────────────────
-// Stream dimensions, dot size and flow speed are all scaled ~5.6× with the
-// pulled-back default camera so the on-screen appearance is unchanged.
 const N_PART           = 120
-const STREAM_HALF      = 19.5  // half-length along flow axis
-const STREAM_CROSS     = 7.2   // cross-section radius
-const FLOW_SPEED_SCALE = 16.7  // world-units/s at speed=1 (cruise)
-const PART_SIZE        = 0.39  // particle dot size (world units)
+const STREAM_HALF      = 3.5   // half-length along flow axis
+const STREAM_CROSS     = 1.3   // cross-section radius
+const FLOW_SPEED_SCALE = 3.0   // world-units/s at speed=1 (cruise)
+
+// Snapshot of an airframe material's blend state, for restoring after ghosting
+type AirframeMatOriginal = {
+  material: THREE.Material
+  transparent: boolean
+  opacity: number
+  depthWrite: boolean
+}
 
 class FourForcesElement extends HTMLElement {
   static observedAttributes = ['height', 'model-path', 'model-rotation', 'model-offset', 'v_ne', 'v_no', 'v_1', 'cruise-kts', 'banking', 'show-help']
@@ -126,12 +125,15 @@ class FourForcesElement extends HTMLElement {
   private _attitudeSlider!: HTMLInputElement
   private _ahEl!: HTMLCanvasElement
   private _bankSlider!: HTMLInputElement
+  private _scaleWrapEl!: HTMLLabelElement
+  private _scaleToggle!: HTMLInputElement
 
   // Controls state
   private _power!: number
   private _attitude!: number
   private _bankDeg!: number
   private _showBank!: boolean
+  private _actualScale!: boolean
 
   // Physics state
   private _speed!: number
@@ -164,6 +166,9 @@ class FourForcesElement extends HTMLElement {
   private _liftCompVertArrow: THREE.Mesh<THREE.ConeGeometry, THREE.MeshBasicMaterial> | null = null
   private _liftCompHorizArrow: THREE.Mesh<THREE.ConeGeometry, THREE.MeshBasicMaterial> | null = null
   private _arrowHelpers: Record<string, THREE.ArrowHelper> = {}
+  // Original airframe material state, captured before the first ghosting so
+  // "Actual scale" can be toggled off again losslessly.
+  private _airframeMatOriginals: AirframeMatOriginal[] | null = null
 
   // Speed limits
   private _vne: number | null = null
@@ -294,6 +299,21 @@ class FourForcesElement extends HTMLElement {
     ahWrap.append(this._attitudeSlider, ahPanel)
     root.appendChild(ahWrap)
 
+    // "Actual scale" toggle — bottom-right, beside the throttle. Fades the
+    // airframe and draws all four force arrows on the weight scale.
+    const scaleWrap = document.createElement('label')
+    scaleWrap.className = 'ff-scale-wrap'
+    scaleWrap.style.display = 'none'
+    this._scaleWrapEl = scaleWrap
+
+    this._scaleToggle = document.createElement('input')
+    this._scaleToggle.type = 'checkbox'
+    this._scaleToggle.className = 'ff-scale-toggle'
+    const scaleText = document.createElement('span')
+    scaleText.textContent = 'Actual scale'
+    scaleWrap.append(this._scaleToggle, scaleText)
+    root.appendChild(scaleWrap)
+
     shadow.appendChild(root)
 
     // ── Slider event listeners (bound once in constructor) ────────────────────
@@ -310,18 +330,23 @@ class FourForcesElement extends HTMLElement {
       this._bankDeg = +(e.target as HTMLInputElement).value
       this._broadcastSlider('bank', this._bankDeg)
     })
+    this._scaleToggle.addEventListener('change', () => {
+      this._setActualScale(this._scaleToggle.checked)
+      this._broadcastSlider('scale', this._actualScale ? 1 : 0)
+    })
 
     // ── Controls state ────────────────────────────────────────────────────────
-    this._power    = 60
-    this._attitude = 4
-    this._bankDeg  = 0
-    this._showBank = false
+    this._power       = 60
+    this._attitude    = 4
+    this._bankDeg     = 0
+    this._showBank    = false
+    this._actualScale = false
 
     // ── Physics state ─────────────────────────────────────────────────────────
     this._speed = 1.0
     this._gamma = 0.0
     this._vsi   = 0.0
-    this._forces    = { lift: WEIGHT_ARROW, weight: WEIGHT_ARROW, thrust: BASE_ARROW * 0.6, drag: BASE_ARROW * 0.6 }
+    this._forces    = { lift: BASE_ARROW, weight: BASE_ARROW, thrust: BASE_ARROW * 0.6, drag: BASE_ARROW * 0.6 }
 
     // ── Three.js handles ──────────────────────────────────────────────────────
     this._THREE          = null
@@ -481,11 +506,55 @@ class FourForcesElement extends HTMLElement {
     }
     this._throttleWrapEl.style.display = val ? 'none' : ''
     this._ahWrapEl.style.display       = val ? 'none' : ''
+    this._scaleWrapEl.style.display    = val ? 'none' : ''
   }
 
   // ── BroadcastChannel helper ──────────────────────────────────────────────────
   _broadcastSlider(type: string, value: number) {
     this._broadcastChannel?.postMessage({ type, value })
+  }
+
+  // ── "Actual scale" mode ──────────────────────────────────────────────────────
+  _setActualScale(value: boolean) {
+    this._actualScale = value
+    this._scaleToggle.checked = value
+    this._applyAirframeGhost()
+    // Arrow lengths pick up the new scale on the next _tick.
+  }
+
+  // Fade the airframe to a ghost in actual-scale mode (so the true-size
+  // thrust/drag arrows aren't hidden inside the fuselage), restoring the
+  // original material state when toggled off.
+  _applyAirframeGhost() {
+    if (!this._aircraftGroup) return
+    if (!this._airframeMatOriginals) {
+      const originals: AirframeMatOriginal[] = []
+      this._aircraftGroup.traverse(child => {
+        const mesh = child as THREE.Mesh
+        if (!mesh.isMesh) return
+        const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
+        for (const material of materials) {
+          originals.push({
+            material,
+            transparent: material.transparent,
+            opacity: material.opacity,
+            depthWrite: material.depthWrite,
+          })
+        }
+      })
+      this._airframeMatOriginals = originals
+    }
+    for (const entry of this._airframeMatOriginals) {
+      if (this._actualScale) {
+        entry.material.transparent = true
+        entry.material.opacity = GHOST_OPACITY
+        entry.material.depthWrite = false
+      } else {
+        entry.material.transparent = entry.transparent
+        entry.material.opacity = entry.opacity
+        entry.material.depthWrite = entry.depthWrite
+      }
+    }
   }
 
   // ── Loop control ─────────────────────────────────────────────────────────────
@@ -569,8 +638,8 @@ class FourForcesElement extends HTMLElement {
     // Weight component dashed lines
     this._weightCompMat = new THREE.LineDashedMaterial({
       color: 0x60a5fa,
-      dashSize: WEIGHT_ARROW * 0.08,
-      gapSize: WEIGHT_ARROW * 0.045,
+      dashSize: 0.12,
+      gapSize: 0.07,
       transparent: true,
       opacity: 0,
     })
@@ -603,8 +672,8 @@ class FourForcesElement extends HTMLElement {
     // Lift component dashed lines (green — shown when banking)
     this._liftCompMat = new THREE.LineDashedMaterial({
       color: 0x22c55e,
-      dashSize: WEIGHT_ARROW * 0.08,
-      gapSize: WEIGHT_ARROW * 0.045,
+      dashSize: 0.12,
+      gapSize: 0.07,
       transparent: true,
       opacity: 0,
     })
@@ -648,7 +717,7 @@ class FourForcesElement extends HTMLElement {
     this._partGeo.setAttribute('position', new THREE.BufferAttribute(this._partPositions, 3))
     this._particles = new THREE.Points(this._partGeo, new THREE.PointsMaterial({
       color: 0x7dd3fc,
-      size: PART_SIZE,
+      size: 0.07,
       transparent: true,
       opacity: 0.65,
       depthWrite: false,
@@ -673,6 +742,9 @@ class FourForcesElement extends HTMLElement {
         case 'bank':
           this._bankDeg = data.value
           this._bankSlider.value = String(this._bankDeg)
+          break
+        case 'scale':
+          this._setActualScale(!!data.value)
           break
         case 'camera':
           if (!this._camera || !this._orbitControls) break
@@ -732,6 +804,11 @@ class FourForcesElement extends HTMLElement {
       this._orbitControls!.target.set(0, 0, 0)
       this._camera!.position.set(...DEFAULT_CAMERA_POSITION)
       this._orbitControls!.update()
+
+      // Materials only exist now — re-capture and re-apply ghosting in case
+      // "Actual scale" was toggled while the model was still loading.
+      this._airframeMatOriginals = null
+      if (this._actualScale) this._applyAirframeGhost()
 
       this._setLoading(false)
     }, undefined, (err: unknown) => {
@@ -852,12 +929,15 @@ class FourForcesElement extends HTMLElement {
       this._gamma = Math.max(-GAMMA_MAX, Math.min(GAMMA_MAX, this._gamma + dgamma * dt))
     }
 
-    // All four arrows share ARROW_SCALE, so balanced forces have equal arrows —
-    // e.g. in a glide the drag arrow matches weight's along-path component.
-    this._forces.lift   = Math.max(0.04, lift   * ARROW_SCALE)
-    this._forces.weight = WEIGHT_ARROW
-    this._forces.thrust = Math.max(0.04, thrust * ARROW_SCALE)
-    this._forces.drag   = Math.max(0.04, drag   * ARROW_SCALE)
+    // Default display magnifies thrust/drag (÷ T_MAX) so they read beside the
+    // airframe; "Actual scale" draws every force on the weight scale so the
+    // true proportions show (thrust ≤ ~15% of weight), with the airframe
+    // ghosted so the short arrows aren't hidden inside it.
+    const thrustDragNorm = this._actualScale ? WEIGHT : T_MAX
+    this._forces.lift   = Math.max(0.04, (lift   / WEIGHT) * BASE_ARROW)
+    this._forces.weight = BASE_ARROW
+    this._forces.thrust = Math.max(0.04, (thrust / thrustDragNorm) * BASE_ARROW)
+    this._forces.drag   = Math.max(0.04, (drag   / thrustDragNorm) * BASE_ARROW)
 
     // The VSI is purely kinematic: vertical speed = v·sinγ. γ is an integrated
     // state, so the needle is already smooth — no separate filtering needed.
@@ -889,10 +969,9 @@ class FourForcesElement extends HTMLElement {
       const arrow = this._arrowHelpers[id]
       if (!arrow) continue
       const len     = this._forces[id]
-      // Head grows with the arrow up to a cap sized for the long lift/weight
-      // arrows; short thrust/drag arrows stay under the cap and keep their
-      // proportions.
-      const headLen = Math.min(len * 0.28, WEIGHT_ARROW * 0.09)
+      // Head grows with the arrow up to a cap, with a floor so the true-scale
+      // thrust/drag arrows (~0.1–0.2 long) keep a legible head.
+      const headLen = Math.min(Math.max(len * 0.28, 0.07), 0.22)
       arrow.setDirection(dirs[id])
       arrow.setLength(len, headLen, headLen * 0.55)
       arrow.visible = len > 0.05
@@ -926,12 +1005,12 @@ class FourForcesElement extends HTMLElement {
     for (const id of ['lift', 'weight', 'thrust', 'drag'] as const) {
       const el = labelRefs[id]
       if (!el) continue
-      // Lift/weight labels sit just past their long arrows; thrust/drag labels
-      // get a fixed world offset past the tip so the text clears the fuselage
-      // even though those arrows are short.
+      // Thrust/drag labels sit a fixed world offset past the tip: with the
+      // magnified arrows that clears the fuselage, and with the short
+      // actual-scale arrows it keeps the text legible beside the ghost.
       const labelDist = (id === 'thrust' || id === 'drag')
-        ? this._forces[id] + 1.0
-        : this._forces[id] * 1.04
+        ? this._forces[id] + (this._actualScale ? 0.35 : 0.4)
+        : this._forces[id] * 1.1
       const tip = tipDirs[id].clone().multiplyScalar(labelDist)
       tip.project(this._camera)
       const x = (tip.x *  0.5 + 0.5) * cw
@@ -1410,6 +1489,7 @@ class FourForcesElement extends HTMLElement {
     this._liftCompVertArrow  = null
     this._liftCompHorizArrow = null
     this._arrowHelpers  = {}
+    this._airframeMatOriginals = null
   }
 }
 

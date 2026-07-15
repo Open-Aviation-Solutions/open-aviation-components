@@ -6,7 +6,7 @@ The core component is a self-contained 3D aerodynamic force visualizer implement
 
 - **Three.js scene** — renderer, orbit-controlled camera, loads `aircraft.glb` (GLTF)
 - **Physics tick loop** — a point-mass longitudinal model with two state variables: airspeed `v` and flight-path angle `γ`. The pitch slider sets attitude θ; angle of attack is `α = θ − γ`, so a power-off glide keeps lift ≈ weight (the path follows the nose) and pitching up produces a zoom climb before settling at the excess-power rate. Stall triggers on α exceeding a critical angle derived from `v_1`. Integration uses measured frame time (frame-rate independent). The derivation and calibration live in the constants block at the top of `index.ts`.
-- **Arrow objects** — scaled 3D arrows for each of the four forces; `_updateArrows()` repositions them each tick
+- **Arrow objects** — scaled 3D arrows for each of the four forces; `_updateArrows()` repositions them each tick. By default thrust/drag are magnified ~6.5× (÷ `T_MAX`) so they read beside the airframe; the "Actual scale" checkbox (bottom-right) fades the airframe to a ghost (`_applyAirframeGhost()`) and draws all four arrows on the weight scale so true proportions and exact balances are visible
 - **2D label overlay** — `_updateLabels()` projects 3D arrow tips to screen coordinates and positions absolutely-placed HTML labels
 - **Weight component decomposition** — `_updateWeightComponents()` shows weight resolved along and perpendicular to the flight path during climbs/descents
 - **Lift component decomposition** — `_updateLiftComponents()` (shown when `banking` attribute is set) shows lift resolved into vertical and horizontal components in the plane perpendicular to airflow

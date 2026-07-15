@@ -344,13 +344,22 @@ appeared ~6.5× longer than the along-path weight component that is exactly
 cancelling it, making a genuinely settled state look unbalanced. It also
 exaggerated thrust's apparent vertical contribution in climbs.
 
-Superseding the "arrows keep the magnified T_MAX display scale" note above:
-all four arrows now share one scale, `ARROW_SCALE = BASE_ARROW / T_MAX`,
-anchored on thrust/drag (rather than lift/weight) so those arrows keep their
-previous world size and stay outside the fuselage. Lift/weight arrows grow to
-≈ 9.8 world units, and the default camera pulls back ~5.6× to fit; dash
-sizes, component-arrowhead cones, the lift/weight arrowhead cap, and the
-particle stream (extent, dot size, flow speed) are scaled with it so the
-on-screen appearance is otherwise unchanged. With one scale, every balance is
-visually true: glide drag matches the along-path weight component tip-to-tip,
-and thrust is honestly a small fraction of weight.
+First attempt: one common scale anchored on thrust/drag, with lift/weight
+grown to ≈ 9.8 world units and the camera pulled back ~5.6× to fit. Review
+found the aircraft became too small to read alongside the towering arrows.
+
+Final design — an **"Actual scale" toggle** (checkbox, bottom-right, synced
+over BroadcastChannel like the sliders):
+
+- **Default (unchecked):** the original presentation — lift/weight on the
+  weight scale, thrust/drag magnified ~6.5× (÷ `T_MAX`), original close-in
+  camera and particle stream. Readable for briefings; scales are mixed.
+- **Checked:** the airframe fades to a ghost (materials at 0.15 opacity —
+  kept faintly visible so pitch/bank context isn't lost) and all four arrows
+  draw on the weight scale. Hiding the fuselage is what makes this possible:
+  true-scale thrust (≤ ~15% of weight) and drag (~9% at cruise) no longer
+  have to clear it. Every balance is then visually exact: glide drag matches
+  the along-path weight component tip-to-tip, a banked turn's vertical lift
+  component matches weight. Arrowheads gain a small floor (0.07) so the short
+  arrows keep legible heads; thrust/drag labels use a fixed offset past the
+  tip.
