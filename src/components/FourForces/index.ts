@@ -16,42 +16,105 @@ sheet.replaceSync(styles)
 const DEFAULT_CAMERA_POSITION = [2.8, 1.78, 3.30] as const
 
 // ── Physics constants ─────────────────────────────────────────────────────────
-// Speed model: airspeed converges to the lift=weight equilibrium for the current AoA:
-//   v_eq = √(W / (CL × LIFT_K))
-// This correctly makes induced drag dominant at high AoA (low speed), giving a distinct
-// minimum-drag speed and separating Vx (best angle) from Vy (best rate).
+// Point-mass longitudinal model in the vertical plane. State: airspeed v
+// (normalised, 1.0 = cruise) and flight-path angle γ (rad). The pitch slider is
+// the attitude θ; the angle of attack is the difference: α = θ − γ.
 //
-// Calibration: at 60% power, +4° attitude, speed = 1.0 → lift = weight, VSI = 0:
-//   CL(4°)  = 0.30 + 2.5×sin(4°) = 0.4745
-//   LIFT_K  = W / CL(4°)          = 0.7 / 0.4745 = 1.476   (so lift = W at v=1)
-//   CD(4°)  = 0.030 + 0.4745²×0.060 = 0.04351
-//   DRAG_K  = thrust / (CD(4°)×1²) = 0.30 / 0.04351 = 6.894  (so T=D → VSI=0 at cruise)
+//   CL = CL0 + CL_A·α           (linear lift curve; stall dropout past α_crit)
+//   CD = CD0 + INV_PIARe·CL²
+//   L  = CL·v²·AERO_K           D = CD·v²·AERO_K           T = throttle·T_MAX
+//   dv/dt = G_NORM·(T − D − W·sin γ) / W         (along the flight path)
+//   dγ/dt = G_NORM·(L·cos φ − W·cos γ) / (W·v)   (lift curves the path; φ = bank)
 //
-// Min-drag speed ≈ v where d(drag)/d(v²)=0 → v²=W/(LIFT_K)×√(INV_PIARe/CD0) ≈ 0.67 → ~82 kts
-// This places Vy ≈ +6° and Vx ≈ +10° at full power (demonstrable with the slider).
+// Lift and drag share the dynamic-pressure scale AERO_K, so L/D = CL/CD
+// (≈ 10.9 at cruise) and glides come out at realistic angles. All four ARROWS
+// are drawn on the weight scale, so their proportions are true — thrust tops
+// out at ~15% of weight and cruise drag is ~9%, as on a real aeroplane — and
+// every balance is visually exact: in a glide the drag arrow matches weight's
+// along-path component tip-to-tip. The airframe is rendered translucent
+// (`model-opacity` attribute) so the short thrust/drag arrows at the centre
+// aren't hidden inside the fuselage.
 //
-// VSI model: rate of climb = V × (T − D) / W (excess power / weight).
-// In a sustained climb, L ≈ W (arrows show equal lift and weight at steady state);
-// the climb is driven entirely by excess thrust, matching the course content.
+// The α = θ − γ coupling is the load-bearing feedback: pitch up → α and lift
+// rise → the path curves upward → α relaxes. With no special cases it yields:
+//   • glide: idle power, −4° pitch → γ ≈ −5.8°, v ≈ 1.12, L = W·cosγ = 0.995·W
+//   • zoom climb: pitching up trades speed for an immediate climb, settling at
+//     the modest steady rate set by excess power
+//   • descending turn: banking without back pressure lets the path drop
+// The linearised system is overdamped (the phugoid is suppressed by the AoA
+// feedback): a fast path mode (~0.5 s) and a slow speed mode (~6 s).
+//
+// Calibration anchor — 60% power, +4° attitude, v = 1 is exactly level:
+//   CL(4°)  = 0.30 + 2.5×(4° in rad) = 0.4745
+//   AERO_K  = W / CL(4°)             = 0.7 / 0.4745 = 1.476  (lift = W at v=1)
+//   CD(4°)  = 0.030 + 0.4745²×0.060  = 0.04351
+//   T_MAX   = CD(4°)×AERO_K / 0.60   = 0.10704  (thrust = drag at 60% physics)
+// Min-drag speed is unchanged (CL_md = √(CD0/INV_PIARe) ≈ 0.71 → ~82 kts), so at
+// full power Vy ≈ +8° pitch (α ≈ 5.6°, max v·sinγ) and Vx ≈ +12° (α ≈ 9.4°,
+// max γ) remain distinct and demonstrable with the slider.
 //
 // Throttle mapping: display 100% → physics 85%, display 60% → physics 60%.
 // Quadratic fitted through (0,0), (60,60), (100,85): physics(d) = −0.00375·d² + 1.225·d
-// The 85% top-end (was 68%) gives enough thrust headroom to sustain a 45° level turn,
-// which needs CD/CL_min × W × DRAG_K / (LIFT_K × cos 45°) ≈ 0.39 of thrust.
+// The 85% top-end keeps enough headroom to sustain a 45° level turn, which
+// needs ≈ 79% physics thrust at the minimum-drag CL.
 const WEIGHT     = 0.7
-const T_MAX      = 0.5
-const BASE_ARROW = 1.5   // world units — arrow length at equilibrium
-const COMP_CONE_H = BASE_ARROW * 0.06  // weight-component arrowhead height
-const COMP_CONE_R = BASE_ARROW * 0.03  // weight-component arrowhead radius
-const LIFT_K     = 1.476
-const DRAG_K     = 6.894  // recalibrated for INV_PIARe = 0.060; T = D at 60%/+4°/v=1
+const T_MAX      = 0.10704
+const BASE_ARROW = 1.5   // world units — weight arrow length
+const MODEL_OPACITY_DEFAULT = 0.15  // translucent airframe (see `model-opacity`)
+// One arrowhead size for everything — sized to suit the short true-scale
+// thrust/drag arrows; lift/weight and the component cones match it so no
+// head dominates. ArrowHelper's headWidth scales a 0.5-radius cone (so it is
+// a diameter); ConeGeometry takes a true radius, hence the halving.
+const ARROW_HEAD_LEN   = 0.07
+const ARROW_HEAD_WIDTH = ARROW_HEAD_LEN * 0.55
+const COMP_CONE_H = ARROW_HEAD_LEN        // component arrowhead height
+const COMP_CONE_R = ARROW_HEAD_WIDTH / 2  // component arrowhead radius
+// Force application points (body frame "x,y,z", scene units, relative to the
+// CoG at the origin; the aircraft spans ~2 units). Weight always acts at the
+// CoG — that is the datum the others are measured from, so it has no offset
+// attribute. The four bases sit at the corners of the "moment rectangle":
+// in straight and level flight the lift and weight lines of action are its
+// vertical edges, the thrust and drag lines its horizontal edges, so the
+// couples are visible as the rectangle's width (lift/weight arm) and height
+// (thrust/drag arm). Since weight must act at the CoG, the CoG is a corner
+// and one horizontal line passes through it. Defaults for the F.2B: lift at
+// the wing quarter-chord, forward of the CoG (lift/weight couple pitches
+// nose-up), thrust on the propeller axis above the drag line (thrust/drag
+// couple pitches nose-down, opposing it), drag drawn from the lift line at
+// CoG height. Only the offset perpendicular to a force's line of action
+// changes its moment, so sliding a base along its own line (e.g. drag
+// forward to the lift line) is presentational, and the arm sizes are
+// exaggerated — a true-scale lift/weight arm would be invisible.
+//
+// The defaults use two shared corners so every shaft traces an edge: lift
+// (up) and drag (aft) both start at the bottom-front corner — the wing
+// quarter-chord at CoG height — while thrust (forward) starts at the
+// top-back corner directly above the CoG. Weight's base is derived, not
+// configured: it slides up weight's own line of action (world-vertical
+// through the CoG) to the higher of the thrust/drag lines, tracing the back
+// edge down through the CoG.
+const FORCE_OFFSET_DEFAULTS: Record<'lift' | 'thrust' | 'drag', readonly [number, number, number]> = {
+  lift:   [0, 0, 0.18],
+  thrust: [0, 0.15, 0],
+  drag:   [0, 0, 0.18],
+}
+const AERO_K     = 1.476 // dynamic-pressure scale shared by lift and drag
 const CL0 = 0.30, CL_A = 2.5
 const CD0 = 0.030, INV_PIARe = 0.060  // higher induced drag → min-drag ≈ 82 kts → Vy ≠ Vx
-const K_VSI      = 3.0   // VSI scale: V×(T−D)/W × K_VSI → normalised VSI (1.0 = full gauge).
-                         // Calibrated so 100% power + cruise pitch reaches ~0.55 gauge,
-                         // matching the prior FPA-feedback steady state, with Vy (α≈6°)
-                         // slightly higher than 4°-pitch climb. Low-power descent pegs at −1.
-const DT         = 0.016
+const G_NORM     = 0.35  // normalised gravity g/V_cruise (s⁻¹) — sets the response
+                         // time scale; the true value for 100 kts is ≈ 0.19,
+                         // raised somewhat so the demo settles in a few seconds
+const K_VSI      = 14    // VSI gauge scale: v·sinγ × K_VSI (1.0 = full deflection).
+                         // Full-power climb at Vy reads ≈ 0.55; an idle-power
+                         // glide pegs the gauge at −1, as the old model did.
+const ALPHA_CRIT_DEFAULT = 16 * Math.PI / 180  // stall AoA when no v_1 attribute is set
+const ALPHA_CRIT_MIN     = 0.10                // rad — guards against v_1 set near cruise speed
+const STALL_WIDTH = 8 * Math.PI / 180  // CL dropout width past α_crit
+const STALL_FLOOR = 0.15               // post-stall fraction of attached lift
+const GAMMA_MAX  = 25 * Math.PI / 180  // display-sanity clamp on flight-path angle
+const V_MIN = 0.3, V_MAX = 1.6         // display-sanity clamps on airspeed
+const MAX_STEP     = 1 / 60  // physics integration sub-step (s)
+const MAX_FRAME_DT = 0.05    // clamp on measured frame time (s)
 const CRUISE_KTS = 100
 
 // ── Gauge draw constants ──────────────────────────────────────────────────────
@@ -67,10 +130,17 @@ const N_PART           = 120
 const STREAM_HALF      = 3.5   // half-length along flow axis
 const STREAM_CROSS     = 1.3   // cross-section radius
 const FLOW_SPEED_SCALE = 3.0   // world-units/s at speed=1 (cruise)
-const FPA_SCALE        = 0.15  // converts smoothVsi to flight-path tilt (shared by particles + drag)
+
+// Snapshot of an airframe material's blend state, for restoring after ghosting
+type AirframeMatOriginal = {
+  material: THREE.Material
+  transparent: boolean
+  opacity: number
+  depthWrite: boolean
+}
 
 class FourForcesElement extends HTMLElement {
-  static observedAttributes = ['height', 'model-path', 'model-rotation', 'model-offset', 'v_ne', 'v_no', 'v_1', 'cruise-kts', 'banking', 'show-help']
+  static observedAttributes = ['height', 'model-path', 'model-rotation', 'model-offset', 'model-opacity', 'lift-offset', 'thrust-offset', 'drag-offset', 'v_ne', 'v_no', 'v_1', 'cruise-kts', 'banking', 'show-help']
 
   // DOM references
   private _root!: HTMLDivElement
@@ -95,12 +165,21 @@ class FourForcesElement extends HTMLElement {
   private _attitude!: number
   private _bankDeg!: number
   private _showBank!: boolean
+  private _modelOpacity: number = MODEL_OPACITY_DEFAULT
+  // Force application points (body frame, relative to the CoG) — see the
+  // `lift-offset`/`thrust-offset`/`drag-offset` attributes.
+  private _forceOffsets: Record<'lift' | 'thrust' | 'drag', [number, number, number]> = {
+    lift:   [...FORCE_OFFSET_DEFAULTS.lift],
+    thrust: [...FORCE_OFFSET_DEFAULTS.thrust],
+    drag:   [...FORCE_OFFSET_DEFAULTS.drag],
+  }
 
   // Physics state
   private _speed!: number
-  private _vsi!: number
-  private _smoothVsi!: number
+  private _gamma!: number  // flight-path angle (rad); AoA = pitch − gamma
+  private _vsi!: number    // displayed VSI = v·sinγ × K_VSI
   private _forces!: { lift: number; weight: number; thrust: number; drag: number }
+  private _lastFrameTime: number | null = null
 
   // Three.js handles
   private _THREE: typeof THREE | null = null
@@ -121,11 +200,14 @@ class FourForcesElement extends HTMLElement {
   private _weightCompPerpArrow: THREE.Mesh<THREE.ConeGeometry, THREE.MeshBasicMaterial> | null = null
   private _weightCompAlongArrow: THREE.Mesh<THREE.ConeGeometry, THREE.MeshBasicMaterial> | null = null
   private _liftCompMat: THREE.LineDashedMaterial | null = null
-  private _liftCompVert: THREE.Line | null = null
-  private _liftCompHoriz: THREE.Line | null = null
-  private _liftCompVertArrow: THREE.Mesh<THREE.ConeGeometry, THREE.MeshBasicMaterial> | null = null
-  private _liftCompHorizArrow: THREE.Mesh<THREE.ConeGeometry, THREE.MeshBasicMaterial> | null = null
+  private _liftCompSupport: THREE.Line | null = null
+  private _liftCompLateral: THREE.Line | null = null
+  private _liftCompSupportArrow: THREE.Mesh<THREE.ConeGeometry, THREE.MeshBasicMaterial> | null = null
+  private _liftCompLateralArrow: THREE.Mesh<THREE.ConeGeometry, THREE.MeshBasicMaterial> | null = null
   private _arrowHelpers: Record<string, THREE.ArrowHelper> = {}
+  // Original airframe material state, captured before translucency is applied
+  // so a `model-opacity` of 1 can restore the materials losslessly.
+  private _airframeMatOriginals: AirframeMatOriginal[] | null = null
 
   // Speed limits
   private _vne: number | null = null
@@ -280,10 +362,10 @@ class FourForcesElement extends HTMLElement {
     this._showBank = false
 
     // ── Physics state ─────────────────────────────────────────────────────────
-    this._speed     = 1.0
-    this._vsi       = 0.0
-    this._smoothVsi = 0.0
-    this._forces    = { lift: BASE_ARROW, weight: BASE_ARROW, thrust: BASE_ARROW * 0.6, drag: BASE_ARROW * 0.6 }
+    this._speed = 1.0
+    this._gamma = 0.0
+    this._vsi   = 0.0
+    this._forces    = { lift: BASE_ARROW, weight: BASE_ARROW, thrust: 0.14, drag: 0.14 }
 
     // ── Three.js handles ──────────────────────────────────────────────────────
     this._THREE          = null
@@ -303,11 +385,11 @@ class FourForcesElement extends HTMLElement {
     this._weightCompAlong = null
     this._weightCompPerpArrow  = null
     this._weightCompAlongArrow = null
-    this._liftCompMat        = null
-    this._liftCompVert       = null
-    this._liftCompHoriz      = null
-    this._liftCompVertArrow  = null
-    this._liftCompHorizArrow = null
+    this._liftCompMat          = null
+    this._liftCompSupport      = null
+    this._liftCompLateral      = null
+    this._liftCompSupportArrow = null
+    this._liftCompLateralArrow = null
     this._arrowHelpers   = {}
 
     // ── ASI speed limits (null = not configured) ─────────────────────────────
@@ -372,6 +454,20 @@ class FourForcesElement extends HTMLElement {
       if (this._bankSlider) this._bankSlider.style.display = this._showBank ? '' : 'none'
     }
     if (name === 'show-help') this._helpLinkEl.style.display = value === 'false' ? 'none' : ''
+    if (name === 'model-opacity') {
+      const parsed = parseFloat(value ?? '')
+      this._modelOpacity = isNaN(parsed) ? MODEL_OPACITY_DEFAULT : Math.max(0, Math.min(1, parsed))
+      this._applyAirframeOpacity()
+    }
+    if (name === 'lift-offset' || name === 'thrust-offset' || name === 'drag-offset') {
+      const forceId = name.slice(0, name.indexOf('-')) as 'lift' | 'thrust' | 'drag'
+      if (value === null) {
+        this._forceOffsets[forceId] = [...FORCE_OFFSET_DEFAULTS[forceId]]
+      } else {
+        const [offsetX, offsetY, offsetZ] = value.split(',').map(part => parseFloat(part) || 0)
+        this._forceOffsets[forceId] = [offsetX || 0, offsetY || 0, offsetZ || 0]
+      }
+    }
   }
 
   // ── Height ──────────────────────────────────────────────────────────────────
@@ -450,6 +546,42 @@ class FourForcesElement extends HTMLElement {
     this._broadcastChannel?.postMessage({ type, value })
   }
 
+  // ── Airframe opacity ─────────────────────────────────────────────────────────
+  // The airframe renders translucent so the true-size thrust/drag arrows at the
+  // centre aren't hidden inside the fuselage. An opacity ≥ 1 restores the
+  // materials' original state (some GLTF materials are transparent by design).
+  _applyAirframeOpacity() {
+    if (!this._aircraftGroup) return
+    if (!this._airframeMatOriginals) {
+      const originals: AirframeMatOriginal[] = []
+      this._aircraftGroup.traverse(child => {
+        const mesh = child as THREE.Mesh
+        if (!mesh.isMesh) return
+        const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
+        for (const material of materials) {
+          originals.push({
+            material,
+            transparent: material.transparent,
+            opacity: material.opacity,
+            depthWrite: material.depthWrite,
+          })
+        }
+      })
+      this._airframeMatOriginals = originals
+    }
+    for (const entry of this._airframeMatOriginals) {
+      if (this._modelOpacity < 1) {
+        entry.material.transparent = true
+        entry.material.opacity = this._modelOpacity
+        entry.material.depthWrite = false
+      } else {
+        entry.material.transparent = entry.transparent
+        entry.material.opacity = entry.opacity
+        entry.material.depthWrite = entry.depthWrite
+      }
+    }
+  }
+
   // ── Loop control ─────────────────────────────────────────────────────────────
   _resumeLoop() {
     if (!this._animFrameId && this._sceneReady) {
@@ -462,6 +594,7 @@ class FourForcesElement extends HTMLElement {
       cancelAnimationFrame(this._animFrameId)
       this._animFrameId = null
     }
+    this._lastFrameTime = null
   }
 
   // ── Scene setup ───────────────────────────────────────────────────────────────
@@ -580,8 +713,8 @@ class FourForcesElement extends HTMLElement {
       this._scene!.add(line)
       return line
     }
-    this._liftCompVert  = makeLiftLine()
-    this._liftCompHoriz = makeLiftLine()
+    this._liftCompSupport = makeLiftLine()
+    this._liftCompLateral = makeLiftLine()
 
     // Cone arrowheads for lift component lines
     const liftConeMat = new THREE.MeshBasicMaterial({ color: 0x22c55e, transparent: true, opacity: 0 })
@@ -592,8 +725,8 @@ class FourForcesElement extends HTMLElement {
       this._scene!.add(mesh)
       return mesh
     }
-    this._liftCompVertArrow  = makeLiftCone()
-    this._liftCompHorizArrow = makeLiftCone()
+    this._liftCompSupportArrow = makeLiftCone()
+    this._liftCompLateralArrow = makeLiftCone()
 
     // Particle stream — initialise positions scattered through the stream volume
     this._partPositions = new Float32Array(N_PART * 3)
@@ -694,6 +827,10 @@ class FourForcesElement extends HTMLElement {
       this._camera!.position.set(...DEFAULT_CAMERA_POSITION)
       this._orbitControls!.update()
 
+      // Materials only exist now — capture originals and apply translucency.
+      this._airframeMatOriginals = null
+      this._applyAirframeOpacity()
+
       this._setLoading(false)
     }, undefined, (err: unknown) => {
       console.error('[FourForces] failed to load aircraft.glb:', err)
@@ -721,6 +858,14 @@ class FourForcesElement extends HTMLElement {
     const THREE = this._THREE!
     this._animFrameId = requestAnimationFrame(this._boundLoop)
 
+    // Measured frame time, clamped, so the physics does not depend on the
+    // display refresh rate (a fixed per-frame step ran 2× fast at 120 Hz).
+    const now = performance.now()
+    const frameDt = this._lastFrameTime === null
+      ? MAX_STEP
+      : Math.min((now - this._lastFrameTime) / 1000, MAX_FRAME_DT)
+    this._lastFrameTime = now
+
     // Set aircraft pitch and bank. Composition order: bank first (world Z), then pitch
     // around the aircraft's own banked lateral axis (intrinsic X). qBank * qPitch achieves
     // this — in body-space terms: bank first, then pitch around the now-rotated X axis.
@@ -732,12 +877,12 @@ class FourForcesElement extends HTMLElement {
       this._aircraftGroup.quaternion.copy(qBank).multiply(qPitch)
     }
 
-    this._tick()
+    this._tick(frameDt)
     this._updateArrows()
     this._updateLabels()
     this._updateWeightComponents()
     this._updateLiftComponents()
-    this._updateParticles()
+    this._updateParticles(frameDt)
 
     this._orbitControls!.update()
     this._renderer!.render(this._scene!, this._camera!)
@@ -745,94 +890,127 @@ class FourForcesElement extends HTMLElement {
   }
 
   // ── Physics tick ──────────────────────────────────────────────────────────────
-  _tick() {
-    // AoA = pitch attitude (the FPA correction is intentionally omitted). Coupling AoA to
-    // smoothVsi made CL lurch on power changes (CL drops in a climb because effective AoA
-    // shrinks as the flight path tilts up), and because vEq is defined by CL × vEq² = W,
-    // any CL change instantly moves vEq while speed lags by 5 s — so lift = CL × speed²
-    // visibly dipped below W during power-up transients. Treating AoA as purely pilot-
-    // commanded means CL only changes when the pilot moves the pitch slider, so power
-    // changes leave lift = W throughout (only VSI responds). The lift arrow still tilts
-    // with FPA via _updateArrows, so the descent-tilt visualisation is unaffected.
-    const aoa    = this._attitude * Math.PI / 180
-    const CL     = CL0 + CL_A * aoa
-    const CD     = CD0 + CL * CL * INV_PIARe
-    const q      = this._speed * this._speed
-    const drag   = CD * q * DRAG_K
+  // Integrates the (v, γ) point-mass model described in the constants block.
+  // AoA is θ − γ, so pitching down in a descent does NOT kill lift: the flight
+  // path follows the nose and α stays positive — a power-off glide settles at
+  // L = W·cosγ with the along-path weight component balancing drag. Pitching up
+  // raises α and lift immediately; the surplus curves the path upward (zoom
+  // climb) and then decays as speed bleeds off, leaving the steady climb rate
+  // set by excess power.
+  _tick(frameDt: number) {
+    // Stall AoA from the configured stall speed: at 1 g, CL_max = W/(AERO_K·VS1²),
+    // so the model stalls at exactly v_1 in level flight — and above it in a
+    // steep turn (accelerated stall). Generic default when v_1 is not set.
+    const vs1Norm   = (this._vs1 && this._cruiseKts) ? this._vs1 / this._cruiseKts : 0
+    const alphaCrit = vs1Norm > 0
+      ? Math.max(ALPHA_CRIT_MIN, (WEIGHT / (AERO_K * vs1Norm * vs1Norm) - CL0) / CL_A)
+      : ALPHA_CRIT_DEFAULT
+
+    const cosBank = Math.cos(this._bankDeg * Math.PI / 180)
     // Non-linear throttle mapping: display 60% → physics 60% (equilibrium), display 100% → physics 85%
-    const d      = this._power
-    const physP  = -0.00375 * d * d + 1.225 * d
+    const displayPower = this._power
+    const physP  = -0.00375 * displayPower * displayPower + 1.225 * displayPower
     const thrust = (physP / 100) * T_MAX
 
-    // Post-stall CL dropout: below VS1 (when CL is positive), lift drops as (v/VS1)²
-    const vs1Norm     = (this._vs1 && this._cruiseKts) ? this._vs1 / this._cruiseKts : 0
-    const stallFactor = (vs1Norm > 0 && CL > 0 && this._speed < vs1Norm)
-      ? (this._speed / vs1Norm) ** 2
-      : 1.0
-    const lift = CL * q * LIFT_K * stallFactor
+    let lift = 0
+    let drag = 0
+    let remaining = frameDt
+    while (remaining > 1e-6) {
+      const dt = Math.min(remaining, MAX_STEP)
+      remaining -= dt
 
-    // Stall nose-drop: push attitude forward proportional to stall depth
-    if (stallFactor < 1.0) {
-      const pitchDown = (1.0 - stallFactor) * 15 * DT  // up to 15 °/s at full stall
-      this._attitude = Math.max(-20, this._attitude - pitchDown)
-      this._attitudeSlider.value = String(this._attitude)
+      const theta = this._attitude * Math.PI / 180
+      const alpha = theta - this._gamma
+
+      // Stall: past the critical angle CL drops with immediate bite (steepest
+      // right at α_crit, flattening to the post-stall floor) so exceeding the
+      // stall produces a genuine break, not an indefinite mush. Drag keeps the
+      // attached-CL polar (separated flow is draggy, not clean).
+      const over        = Math.min(Math.max((Math.abs(alpha) - alphaCrit) / STALL_WIDTH, 0), 1)
+      const stallFactor = 1 - (1 - STALL_FLOOR) * over * (2 - over)
+      const clAttached  = CL0 + CL_A * alpha
+      const CL = clAttached * stallFactor
+      const CD = CD0 + clAttached * clAttached * INV_PIARe
+      const q  = this._speed * this._speed
+      lift = CL * q * AERO_K
+      drag = CD * q * AERO_K
+
+      // Stall nose-drop: push attitude forward proportional to stall depth
+      if (stallFactor < 1 && alpha > 0) {
+        const pitchDown = (1 - stallFactor) * 15 * dt  // up to ~13 °/s deep in the stall
+        this._attitude = Math.max(-20, this._attitude - pitchDown)
+        this._attitudeSlider.value = String(this._attitude)
+      }
+
+      // Equations of motion. In a bank only L·cosφ holds the path up, so rolling
+      // in without adding back pressure or power produces a descending turn.
+      const dv     = G_NORM * (thrust - drag - WEIGHT * Math.sin(this._gamma)) / WEIGHT
+      const dgamma = G_NORM * (lift * cosBank - WEIGHT * Math.cos(this._gamma)) / (WEIGHT * this._speed)
+      this._speed = Math.max(V_MIN,      Math.min(V_MAX,     this._speed + dv     * dt))
+      this._gamma = Math.max(-GAMMA_MAX, Math.min(GAMMA_MAX, this._gamma + dgamma * dt))
     }
 
+    // All four arrows share the weight scale, so their proportions are true
+    // (thrust tops out at ~15% of weight) and balanced forces have equal
+    // arrows — e.g. in a glide the drag arrow matches weight's along-path
+    // component tip-to-tip. The translucent airframe keeps the short
+    // thrust/drag arrows visible at the centre.
     this._forces.lift   = Math.max(0.04, (lift   / WEIGHT) * BASE_ARROW)
     this._forces.weight = BASE_ARROW
-    this._forces.thrust = Math.max(0.04, (thrust / T_MAX)  * BASE_ARROW)
-    this._forces.drag   = Math.max(0.04, (drag   / T_MAX)  * BASE_ARROW)
+    this._forces.thrust = Math.max(0.04, (thrust / WEIGHT) * BASE_ARROW)
+    this._forces.drag   = Math.max(0.04, (drag   / WEIGHT) * BASE_ARROW)
 
-    // Airspeed converges to the aerodynamic equilibrium for the current AoA and bank.
-    // In a level banked turn, vertical lift must equal weight, so total lift = W / cos(bank)
-    // and v_eq² · CL · LIFT_K = W / cos(bank). At bank = 0 this reduces to lift = weight.
-    // At high AoA, v_eq is low → induced drag dominates → gives distinct Vx and Vy.
-    // Clamp CL to a small positive floor so v_eq never takes √(negative) at steep negative
-    // attitudes; clamp cos(bank) to avoid blow-up near 90°; cap vEq at 1.5× cruise so that
-    // at negative attitudes the equilibrium speed stays physically plausible.
-    const CLpos   = Math.max(0.05, CL)
-    const cosBank = Math.max(0.2, Math.cos(this._bankDeg * Math.PI / 180))
-    const vEq     = Math.min(1.5, Math.sqrt(WEIGHT / (CLpos * LIFT_K * cosBank)))
-    this._speed      += (vEq - this._speed) * DT * 0.2
-    this._speed       = Math.max(0.35, Math.min(2.2, this._speed))
-
-    // Rate of climb from excess power at equilibrium: V_eq × (T − D_eq) / W.
-    // Using v_eq (not transient speed) so that pitching up immediately raises VSI
-    // while the ASI needle drifts down separately as speed settles. In a bank, vEq rises
-    // (more lift needed), dragEq rises with it, and the thrust margin captures the "you
-    // need more AoA and/or power to maintain altitude" effect without a separate term.
-    const dragEq    = CD * vEq * vEq * DRAG_K
-    // In stall: power term scales down with stallFactor; lift deficit drives additional sink
-    const vsiTarget = stallFactor * vEq * (thrust - dragEq) / WEIGHT * K_VSI
-                      - (1.0 - stallFactor)
-    this._vsi       += (vsiTarget - this._vsi) * DT
-    this._smoothVsi  = this._smoothVsi * 0.93 + this._vsi * 0.07
+    // The VSI is purely kinematic: vertical speed = v·sinγ. γ is an integrated
+    // state, so the needle is already smooth — no separate filtering needed.
+    this._vsi = this._speed * Math.sin(this._gamma) * K_VSI
   }
 
   // ── Arrow update ──────────────────────────────────────────────────────────────
+  // World-space application points of the forces: the body-frame offsets
+  // rotated with the airframe. Weight always acts through the CoG (the
+  // origin); its base slides up its own line of action — world-vertical, NOT
+  // the body axis, so the shaft passes through the CoG even when banked — to
+  // the higher of the thrust/drag lines, tracing the quadrilateral's back edge.
+  _forceOrigins() {
+    const THREE = this._THREE!
+    const q = this._aircraftGroup!.quaternion
+    const weightBaseHeight = Math.max(this._forceOffsets.thrust[1], this._forceOffsets.drag[1], 0)
+    return {
+      lift:   new THREE.Vector3(...this._forceOffsets.lift).applyQuaternion(q),
+      weight: new THREE.Vector3(0, weightBaseHeight, 0),
+      thrust: new THREE.Vector3(...this._forceOffsets.thrust).applyQuaternion(q),
+      drag:   new THREE.Vector3(...this._forceOffsets.drag).applyQuaternion(q),
+    }
+  }
+
   _updateArrows() {
     const THREE = this._THREE!
     if (!this._aircraftGroup) return
     const q = this._aircraftGroup.quaternion
 
     const bankRad = this._bankDeg * Math.PI / 180
+    const sinGamma = Math.sin(this._gamma)
+    const cosGamma = Math.cos(this._gamma)
     const dirs = {
-      // Lift is perpendicular to the relative airflow and tilted by bank angle.
-      // Body Y (aircraft up) under setFromAxisAngle(Z, θ) → world (-sin θ, cos θ, 0).
-      lift:   new THREE.Vector3(-Math.sin(bankRad), Math.cos(bankRad), -this._smoothVsi * FPA_SCALE).normalize(),
+      // Lift is perpendicular to the relative airflow (the flight path), rolled
+      // about it by the bank angle: rotating (0, cosγ, −sinγ) around the flight
+      // path (0, sinγ, cosγ) by φ gives (−sinφ, cosγ·cosφ, −sinγ·cosφ) — exact
+      // and already unit length.
+      lift:   new THREE.Vector3(-Math.sin(bankRad), cosGamma * Math.cos(bankRad), -sinGamma * Math.cos(bankRad)),
       weight: new THREE.Vector3(0, -1, 0),
       thrust: new THREE.Vector3(0, 0,  1).applyQuaternion(q).normalize(),
-      // Drag opposes motion through the air — aligned with the relative airflow (flight path, not body axis)
-      drag:   new THREE.Vector3(0, -this._smoothVsi * FPA_SCALE, -1).normalize(),
+      // Drag opposes motion through the air — along −(flight path), not the body axis
+      drag:   new THREE.Vector3(0, -sinGamma, -cosGamma),
     }
 
+    const origins = this._forceOrigins()
     for (const id of ['lift', 'weight', 'thrust', 'drag'] as const) {
       const arrow = this._arrowHelpers[id]
       if (!arrow) continue
-      const len     = this._forces[id]
-      const headLen = Math.min(len * 0.28, 0.22)
+      const len = this._forces[id]
+      arrow.position.copy(origins[id])
       arrow.setDirection(dirs[id])
-      arrow.setLength(len, headLen, headLen * 0.55)
+      arrow.setLength(len, ARROW_HEAD_LEN, ARROW_HEAD_WIDTH)
       arrow.visible = len > 0.05
     }
   }
@@ -846,11 +1024,13 @@ class FourForcesElement extends HTMLElement {
 
     const q = this._aircraftGroup.quaternion
     const bankRad = this._bankDeg * Math.PI / 180
+    const sinGamma = Math.sin(this._gamma)
+    const cosGamma = Math.cos(this._gamma)
     const tipDirs = {
-      lift:   new THREE.Vector3(-Math.sin(bankRad), Math.cos(bankRad), -this._smoothVsi * FPA_SCALE).normalize(),
+      lift:   new THREE.Vector3(-Math.sin(bankRad), cosGamma * Math.cos(bankRad), -sinGamma * Math.cos(bankRad)),
       weight: new THREE.Vector3(0, -1, 0),
       thrust: new THREE.Vector3(0, 0,  1).applyQuaternion(q).normalize(),
-      drag:   new THREE.Vector3(0, -this._smoothVsi * FPA_SCALE, -1).normalize(),
+      drag:   new THREE.Vector3(0, -sinGamma, -cosGamma),
     }
     const labelRefs = {
       lift:   this._labelLift,
@@ -859,14 +1039,21 @@ class FourForcesElement extends HTMLElement {
       drag:   this._labelDrag,
     }
 
+    const origins = this._forceOrigins()
     for (const id of ['lift', 'weight', 'thrust', 'drag'] as const) {
       const el = labelRefs[id]
       if (!el) continue
-      const labelOffset = (id === 'thrust' || id === 'drag') ? 1.35 : 1.1
-      const tip = tipDirs[id].clone().multiplyScalar(this._forces[id] * labelOffset)
+      // Thrust/drag labels sit a fixed world offset past the tip so the text
+      // stays legible beside the short true-scale arrows.
+      const labelDist = (id === 'thrust' || id === 'drag')
+        ? this._forces[id] + 0.35
+        : this._forces[id] * 1.1
+      const tip = origins[id].clone().addScaledVector(tipDirs[id], labelDist)
       tip.project(this._camera)
-      const x = (tip.x *  0.5 + 0.5) * cw
-      const y = (tip.y * -0.5 + 0.5) * ch
+      // Clamp into the canvas — application-point offsets can push a tip
+      // right up to (or past) the edge.
+      const x = Math.min(Math.max((tip.x *  0.5 + 0.5) * cw, 24), cw - 24)
+      const y = Math.min(Math.max((tip.y * -0.5 + 0.5) * ch, 10), ch - 10)
       el.style.left = `${x}px`
       el.style.top  = `${y}px`
       el.style.display = this._forces[id] > 0.08 ? 'block' : 'none'
@@ -881,8 +1068,10 @@ class FourForcesElement extends HTMLElement {
     const THREE = this._THREE!
     if (!this._weightCompPerp || !this._aircraftGroup) return
 
-    // fpTilt is unclamped, matching the drag/lift arrow directions in _updateArrows exactly.
-    const fpTilt = -this._smoothVsi * FPA_SCALE
+    // fpTilt = −tanγ makes liftDir normalise to (0, cosγ, −sinγ) — exactly the
+    // wings-level lift arrow direction in _updateArrows, so the decomposition
+    // (perp = W·cosγ, along = W·sinγ) is geometrically exact.
+    const fpTilt = -Math.tan(this._gamma)
 
     this._weightCompMat!.opacity = 1
 
@@ -894,9 +1083,12 @@ class FourForcesElement extends HTMLElement {
     // Exact perpendicular projection of weight onto -liftDir: W / sqrt(1 + fpTilt²).
     // This guarantees weightTip − perpEnd = W·fpTilt/(1+fpTilt²)·(0,−fpTilt,1),
     // which is exactly parallel to the flight-path / drag direction.
-    const perpLen = W / Math.sqrt(1 + fpTilt * fpTilt)
-    const perpEnd   = liftDir.clone().multiplyScalar(-perpLen)
-    const weightTip = new THREE.Vector3(0, -W, 0)
+    // The chain starts where the weight arrow does (its base sits on the
+    // higher of the thrust/drag lines, above the CoG).
+    const weightOrigin = this._forceOrigins().weight
+    const perpLen   = W / Math.sqrt(1 + fpTilt * fpTilt)
+    const perpEnd   = weightOrigin.clone().addScaledVector(liftDir, -perpLen)
+    const weightTip = weightOrigin.clone().add(new THREE.Vector3(0, -W, 0))
 
     const setLine = (line: THREE.Line, start: THREE.Vector3, end: THREE.Vector3) => {
       const attr = line.geometry.attributes['position'] as THREE.BufferAttribute
@@ -907,9 +1099,8 @@ class FourForcesElement extends HTMLElement {
       line.visible = true
     }
 
-    const ORIGIN = new THREE.Vector3()
-    setLine(this._weightCompPerp,  ORIGIN,  perpEnd)
-    setLine(this._weightCompAlong!, perpEnd, weightTip)
+    setLine(this._weightCompPerp,   weightOrigin, perpEnd)
+    setLine(this._weightCompAlong!, perpEnd,      weightTip)
 
     // Fade cone arrowheads in as the horizontal component grows.
     // Both share the same opacity so they appear/disappear together.
@@ -929,46 +1120,55 @@ class FourForcesElement extends HTMLElement {
         cone.material.opacity = coneOpacity
         cone.visible = true
       }
-      placeCone(this._weightCompPerpArrow!,  ORIGIN,  perpEnd)
+      placeCone(this._weightCompPerpArrow!,  weightOrigin, perpEnd)
       placeCone(this._weightCompAlongArrow!, perpEnd, weightTip)
     }
   }
 
   // ── Lift components ───────────────────────────────────────────────────────────
-  // When banking, lift decomposes into vertical (cos θ) and horizontal (sin θ) components.
-  // The horizontal component provides centripetal force for the turn; the vertical component
-  // must support the aircraft's weight, which is why more back-pressure is needed in a turn.
+  // When banking, lift decomposes within the plane perpendicular to the velocity
+  // (where the lift vector lives — bank just rotates it in that plane):
+  //   support: L·cosφ along the unbanked-lift direction — the lift left to oppose
+  //     weight, which is why more back-pressure is needed in a turn
+  //   lateral: L·sinφ along the lateral axis — exactly horizontal, the centripetal
+  //     force turning the aircraft; zero wings-level, so no component chain appears
+  //     in an unbanked glide
   _updateLiftComponents() {
     const THREE = this._THREE!
-    if (!this._liftCompVert || !this._aircraftGroup) return
+    if (!this._liftCompSupport || !this._aircraftGroup) return
 
     if (!this._showBank) {
-      this._liftCompVert.visible         = false
-      this._liftCompHoriz!.visible       = false
-      this._liftCompVertArrow!.visible   = false
-      this._liftCompHorizArrow!.visible  = false
-      this._liftCompMat!.opacity         = 0
+      this._liftCompSupport.visible        = false
+      this._liftCompLateral!.visible       = false
+      this._liftCompSupportArrow!.visible  = false
+      this._liftCompLateralArrow!.visible  = false
+      this._liftCompMat!.opacity           = 0
       return
     }
 
     // Use the actual lift direction (same vector as drawn by _updateArrows) so the
-    // components lie in the bank plane perpendicular to the airflow and always join
-    // to the real lift tip — including the Z offset introduced by the flight path angle.
+    // components always join to the real lift tip — including the Z offset
+    // introduced by the flight path angle. The chain starts where the lift
+    // arrow does: at the lift application point, not the CoG.
     const bankRad = this._bankDeg * Math.PI / 180
-    const liftDir = new THREE.Vector3(-Math.sin(bankRad), Math.cos(bankRad), -this._smoothVsi * FPA_SCALE).normalize()
-    const L       = this._forces.lift
-    const liftTip = liftDir.clone().multiplyScalar(L)
+    const liftDir = new THREE.Vector3(
+      -Math.sin(bankRad),
+      Math.cos(this._gamma) * Math.cos(bankRad),
+      -Math.sin(this._gamma) * Math.cos(bankRad),
+    )
+    const L          = this._forces.lift
+    const liftOrigin = this._forceOrigins().lift
+    const liftTip    = liftOrigin.clone().addScaledVector(liftDir, L)
 
-    // Decompose lift into world-vertical (Y) and the remainder.
-    //   vertical:   (0, liftTip.y, 0) — purely along world Y, so the dashed arrow is directly
-    //     comparable to the weight arrow in screen space regardless of camera angle.
-    //   horizontal: liftTip − vertical = (liftTip.x, 0, liftTip.z) — the centripetal X part
-    //     plus any forward Z from FPA tilt (visible as a forward lean in descending turns,
-    //     reinforcing the same "lift tilts forward in a descent" lesson as the main arrow).
-    const vertEnd  = new THREE.Vector3(0, liftTip.y, 0)
-    const horizEnd = liftTip.clone()
-
-    const ORIGIN = new THREE.Vector3()
+    // Support component: L·cosφ along the unbanked-lift direction (0, cosγ, −sinγ).
+    // Exactly vertical in a level turn; tilts forward by γ in a descending one, just
+    // like the whole lift vector. The lateral component is then liftTip − supportEnd
+    // = (−L·sinφ, 0, 0): purely horizontal, so the two legs sum exactly to lift.
+    const supportEnd = liftOrigin.clone().addScaledVector(
+      new THREE.Vector3(0, Math.cos(this._gamma), -Math.sin(this._gamma)),
+      L * Math.cos(bankRad),
+    )
+    const lateralEnd = liftTip.clone()
 
     this._liftCompMat!.opacity = 1
 
@@ -980,17 +1180,17 @@ class FourForcesElement extends HTMLElement {
       line.computeLineDistances()
       line.visible = true
     }
-    setLine(this._liftCompVert,   ORIGIN,  vertEnd)
-    setLine(this._liftCompHoriz!, vertEnd, horizEnd)
+    setLine(this._liftCompSupport,  liftOrigin, supportEnd)
+    setLine(this._liftCompLateral!, supportEnd, lateralEnd)
 
     // Fade cones in as bank increases from zero (same pattern as weight components)
     const CONE_H = COMP_CONE_H
-    const horizLen = horizEnd.clone().sub(vertEnd).length()   // X (centripetal) + Z (forward in descent)
-    const coneOpacity = Math.min(1, horizLen / (CONE_H * 2))
+    const lateralLen = lateralEnd.clone().sub(supportEnd).length()   // L·sinφ
+    const coneOpacity = Math.min(1, lateralLen / (CONE_H * 2))
 
     if (coneOpacity < 0.01) {
-      this._liftCompVertArrow!.visible  = false
-      this._liftCompHorizArrow!.visible = false
+      this._liftCompSupportArrow!.visible = false
+      this._liftCompLateralArrow!.visible = false
     } else {
       const Y_AXIS = new THREE.Vector3(0, 1, 0)
       const placeCone = (cone: THREE.Mesh<THREE.ConeGeometry, THREE.MeshBasicMaterial>, start: THREE.Vector3, end: THREE.Vector3) => {
@@ -1000,27 +1200,27 @@ class FourForcesElement extends HTMLElement {
         cone.material.opacity = coneOpacity
         cone.visible = true
       }
-      placeCone(this._liftCompVertArrow!,  ORIGIN,  vertEnd)
-      placeCone(this._liftCompHorizArrow!, vertEnd, horizEnd)
+      placeCone(this._liftCompSupportArrow!, liftOrigin, supportEnd)
+      placeCone(this._liftCompLateralArrow!, supportEnd, lateralEnd)
     }
   }
 
   // ── Particle stream ───────────────────────────────────────────────────────────
-  _updateParticles() {
+  _updateParticles(frameDt: number) {
     const THREE = this._THREE!
     if (!this._partGeo || !this._aircraftGroup) return
 
-    // Relative airflow = opposite to the aircraft's flight path through the air (world space).
-    // It is NOT aligned with the aircraft body — that angle IS the angle of attack.
-    // At level cruise (pitch 3°, VSI ≈ 0): airflow is horizontal, nose is tilted up → AoA = 3°.
-    // In a climb (VSI > 0): airflow tilts slightly upward from ahead (flight path rises).
-    const fpTilt  = -this._smoothVsi * FPA_SCALE   // climbing → flight path up → airflow from slightly below
-    const flowDir = new THREE.Vector3(0, fpTilt, -1).normalize()
+    // Relative airflow = opposite to the aircraft's flight path through the air
+    // (world space). It is NOT aligned with the aircraft body — that angle IS
+    // the angle of attack. Level cruise (pitch +4°, γ = 0): airflow horizontal,
+    // nose tilted up → AoA = 4°. In a climb (γ > 0) the stream tilts down-and-
+    // back — the airflow comes from slightly below ahead.
+    const flowDir = new THREE.Vector3(0, -Math.sin(this._gamma), -Math.cos(this._gamma))
     // Perpendicular axes for spawn disc (approximately correct for near-horizontal flow)
     const flowRight = new THREE.Vector3(1, 0, 0)
     const flowUp    = new THREE.Vector3(0, 1, 0)
 
-    const step = this._speed * FLOW_SPEED_SCALE * DT
+    const step = this._speed * FLOW_SPEED_SCALE * frameDt
     const pos  = this._partPositions!
 
     for (let i = 0; i < N_PART; i++) {
@@ -1080,7 +1280,7 @@ class FourForcesElement extends HTMLElement {
     const vsiCtx = vsiCanvas.getContext('2d')!
     const vsiRadius = Math.min(vsiCanvas.width * 0.44, vsiCanvas.height * 0.44, 56)
     vsiCtx.clearRect(0, 0, vsiCanvas.width, vsiCanvas.height)
-    this._drawVSI(vsiCtx, vsiCanvas.width / 2, vsiRadius + 10, vsiRadius, this._smoothVsi)
+    this._drawVSI(vsiCtx, vsiCanvas.width / 2, vsiRadius + 10, vsiRadius, this._vsi)
 
     const ah = this._ahEl
     if (!ah) return
@@ -1313,12 +1513,12 @@ class FourForcesElement extends HTMLElement {
     this._weightCompPerpArrow?.material.dispose()
     this._weightCompAlongArrow?.geometry.dispose()
     this._weightCompAlongArrow?.material.dispose()
-    this._liftCompVert?.geometry.dispose()
-    this._liftCompHoriz?.geometry.dispose()
-    this._liftCompVertArrow?.geometry.dispose()
-    this._liftCompVertArrow?.material.dispose()
-    this._liftCompHorizArrow?.geometry.dispose()
-    this._liftCompHorizArrow?.material.dispose()
+    this._liftCompSupport?.geometry.dispose()
+    this._liftCompLateral?.geometry.dispose()
+    this._liftCompSupportArrow?.geometry.dispose()
+    this._liftCompSupportArrow?.material.dispose()
+    this._liftCompLateralArrow?.geometry.dispose()
+    this._liftCompLateralArrow?.material.dispose()
 
     this._animFrameId   = null
     this._sceneReady    = false
@@ -1329,12 +1529,13 @@ class FourForcesElement extends HTMLElement {
     this._aircraftGroup = null
     this._broadcastChannel = null
     this._partGeo       = null
-    this._liftCompMat        = null
-    this._liftCompVert       = null
-    this._liftCompHoriz      = null
-    this._liftCompVertArrow  = null
-    this._liftCompHorizArrow = null
+    this._liftCompMat          = null
+    this._liftCompSupport      = null
+    this._liftCompLateral      = null
+    this._liftCompSupportArrow = null
+    this._liftCompLateralArrow = null
     this._arrowHelpers  = {}
+    this._airframeMatOriginals = null
   }
 }
 
