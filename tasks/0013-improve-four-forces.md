@@ -451,3 +451,42 @@ the top-back corner. Weight's base is derived, not configured — it slides up
 weight's own line of action (world-vertical, NOT the body axis, so the shaft
 still passes through the CoG when banked) to max(thrust_y, drag_y, 0). The
 weight decomposition chain starts at the weight base accordingly.
+
+### Follow-up: arrows at physical application points, grey trace-backs (2026-07-15)
+
+After using the moment rectangle, direction changed: the coloured arrows
+should originate where each force actually acts — lift on the top wing at
+the quarter-chord (`0,0.4,0.18`), thrust at the propeller boss
+(`0,0.15,0.45`), drag at the wing trailing edge (`0,0,-0.01`), weight at the
+CoG — so the force placement itself is instructive. The moment quadrilateral
+is preserved by solid grey lines (`_updateMomentLines()`, not dotted — grey
+alone was judged enough) that extend each force's line of action back from
+the arrow base to the farther of its crossings with the perpendicular pair's
+lines (lift/weight ↔ thrust/drag), computed as closest-point parameters so
+each trace-back stays exactly collinear with its force even when bank makes
+the lines skew. A trace-back hides with its force arrow (thrust at idle).
+Weight's base needs no derivation any more — it just starts at the CoG.
+The shared force-direction math moved into `_forceDirections()`, used by
+arrows, labels, and trace-backs alike.
+
+Refinement: the force arrows themselves draw with solid cylinder shafts
+(`ARROW_SHAFT_RADIUS`, plus the existing cone heads) in the force colour,
+replacing THREE.ArrowHelper's 1-px line shafts, so the actual forces stand
+out clearly against the thin grey trace-back lines.
+
+Calibration follow-up: lift lowered to `0,0.3,0.18` so it springs from the
+wing structure just under the top wing, and drag raised to `0,0.1,-0.01` —
+the earlier `y=0` was inherited from the old rectangle design, not measured;
+on this biplane the wing cell and rigging dominate the drag, so its centroid
+sits above the CoG (kept just below the thrust line because the
+undercarriage and lower fuselage pull it down, preserving the opposing
+nose-down couple).
+
+CoG placement: the scene origin (weight's application point and the
+pitch/bank pivot) moved forward and up within the airframe — the engine and
+pilot sit forward, so the default model shifts in the GLTF load callback
+changed from z −0.2 / y +0.1 to z −0.32 / y +0.05. The origin now sits under
+the front cockpit near mid-chord, just below the thrust line. All force
+offset defaults re-expressed relative to the new origin (same physical
+spots): lift `0,0.25,0.06`, thrust `0,0.1,0.33`, drag `0,0.05,-0.13`. The
+lift/weight arm narrows to ~0.06 — honest to a CoG near the quarter-chord.
