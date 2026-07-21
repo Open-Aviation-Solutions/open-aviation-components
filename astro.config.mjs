@@ -59,6 +59,7 @@ export default defineConfig({
             { label: 'Climb Performance', slug: 'climb-performance' },
             { label: 'Crosswind Clock',   slug: 'crosswind-clock' },
             { label: 'Four Forces',       slug: 'four-forces' },
+            { label: 'Max Rate / Min Radius', slug: 'max-rate-min-radius' },
             { label: 'Pitch Roll Yaw',    slug: 'pitch-roll-yaw' },
           ],
         },

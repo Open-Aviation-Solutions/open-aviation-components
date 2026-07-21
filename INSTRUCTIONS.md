@@ -39,6 +39,20 @@ This is a **web component library** for interactive aviation training visualizat
 
 Component-specific instructions live alongside each component's source (e.g. `src/components/FourForces/INSTRUCTIONS.md`).
 
+## Domain notes
+
+Where a component's teaching point rests on a non-obvious physical relationship,
+record it so future changes don't quietly break the pedagogy:
+
+- **Corner (manoeuvring) speed — `<max-rate-min-radius>`.** For a level turn,
+  turn radius `r = V²/(g·tan φ)` and turn rate `ω = g·tan φ/V` are both bounded
+  by two limits: the stall/buffet limit (`n_max = (V/Vs)²`) and the structural
+  load-factor limit. Those two limits meet at the **corner speed**,
+  `Vc = Vs·√n_struct` — the single speed that gives *both* the minimum radius and
+  the maximum rate. This is why "slow for a tight turn, fast for a quick turn" is
+  only a partial truth, and it is the specific insight the component exists to
+  make visible. See `src/components/MaximumRateMinimumRadius/INSTRUCTIONS.md`.
+
 ## Naming conventions
 
 - **Component source directory:** `src/components/<ComponentName>/` — PascalCase matching the class name (e.g. `FourForces/`)
