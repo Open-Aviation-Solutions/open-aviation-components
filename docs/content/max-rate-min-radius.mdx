@@ -1,0 +1,89 @@
+---
+title: Maximum Rate / Minimum Radius Turn
+description: A top-down interactive turn where speed and bank drive the real turn radius, rate, and load factor — see why the tightest turn and the fastest turn are not the same thing.
+---
+
+import MaximumRateMinimumRadius from '../components/MaximumRateMinimumRadius.astro'
+import ComponentDescription from '../components/ComponentDescription.astro'
+
+<ComponentDescription />
+
+Students are taught the shorthand — "slow with flaps for a tight turn, fly at the buffet" and "steep bank for a fast turn" — and memorise it without ever seeing *why* the two goals pull in different directions, or where they meet. The turn radius and turn rate come from the same two numbers (speed and bank), yet a change that shrinks the radius does not always speed the turn up.
+
+This tool is driven by the real turn equations. Slide speed and bank and watch the circle, the radius, the rate, and the load factor move together. Pin one turn as a reference, change the other, and watch the two aircraft race around their circles — the one with the higher rate laps the other, even when its circle is larger. That makes "radius" and "rate" visibly separate ideas instead of two words for the same thing.
+
+<MaximumRateMinimumRadius />
+
+## The physics
+
+For a level, coordinated turn at true airspeed *V* and bank angle *φ*:
+
+| Quantity | Formula |
+|----------|---------|
+| Load factor | `n = 1 / cos φ` |
+| Turn radius | `r = V² / (g · tan φ)` |
+| Turn rate | `ω = g · tan φ / V` |
+| Time for 360° | `t = 2π / ω` |
+
+Two limits bound what you can actually fly:
+
+- **Stall / buffet** caps the sustainable load factor at `n_max = (V / Vs)²`, so the steepest bank a given speed can hold is `φ_max = acos((Vs / V)²)`. Flaps lower *Vs*, which is why they let you bank harder when slow. The turn's own stall speed rises with bank — the **accelerated stall speed** `Vs·√n` — and when the live turn is within a few knots of it (5 kt by default), the track **flashes orange** to mark the pre-stall buffet the theory has you fly at; steepen further and it turns solid red at the stall.
+- **Structural limit** caps *n* at a fixed value (default 3.8 g).
+
+Where those two limits meet is the **manoeuvring (corner) speed**, `Vc = Vs · √n_struct`. That single speed gives *both* the minimum radius and the maximum rate — which is the payoff of the tool: the "slow vs fast" shorthand resolves to "it depends which limit you are against, and both best-turn goals converge at corner speed."
+
+## For instructors
+
+- **Radius and rate are different** — pin a slow, steep turn, then set up a faster one at the same bank. The faster turn has a *larger* radius but a *higher* rate; watch it lap the reference. Students who think "tighter = faster" see the distinction directly.
+- **Why flaps help a tight turn** — toggle flaps and note the max-bank figure rise at low speed. Lower stall speed buys more sustainable bank before the buffet.
+- **Corner speed** — the readout shows it. Set the speed there and pull to the structural limit: this is the tightest, fastest turn the aircraft can fly. Above it you are structurally limited; below it you are stall limited.
+- **Standard-rate turns** — the **Standard rate** button sets the bank for 3°/s at the current speed, tying the instrument-flying rule of thumb (bank ≈ V⁄10 + 7) to the underlying equation.
+
+## For trainees
+
+1. Start at a medium speed and bank, and read the radius and time-for-360.
+2. **Steepen the bank** — radius shrinks, rate rises, and load factor climbs. As you approach the limit the track **flashes orange** — that is the buffet, the edge you fly a minimum-radius turn at; keep going and it turns solid red at the stall.
+3. **Slow down** at a fixed steep bank — watch the max-bank limit fall until the turn stalls. This is why you cannot simply bank harder to tighten a slow turn.
+4. **Pin** a few turns, change speed and bank, and race them. Find a setting that laps a slower track (higher rate) but sits *outside* it (larger radius). Tap a track's card to jump back to it.
+5. Press **Standard rate** at a few different speeds and note how much more bank a faster aircraft needs for the same 3°/s.
+
+## Interaction
+
+- **Speed** and **Bank** sliders drive the live (blue) turn.
+- **Zoom** sets how much ground the view shows, and the scale is held fixed as you change speed and bank — so a tighter turn visibly shrinks from the start line instead of the whole view rescaling. **Fit view** rescales to frame the current turn (and any pinned reference).
+- **Flaps** lowers the stall speed used for the buffet limit.
+- **Standard rate** sets the bank for a 3°/s turn at the current speed.
+- **Pin turn** saves the current turn as a colour-coded track (up to four) drawn as a reference circle with its own card; **Clear pins** removes them all.
+- **Tap any pinned card to load it back** into the speed and bank controls — the quick way to switch between saved turns and keep tweaking one. The card matching the live turn is marked *active*.
+- Changing speed or bank restarts every aircraft from the start line so you can compare which completes the turn first.
+
+## Embedding this component
+
+```html
+<script type="module">
+  import 'https://unpkg.com/@open-aviation-solutions/components/dist/lib/define.es.js';
+</script>
+
+<max-rate-min-radius height="600px" vs="50"></max-rate-min-radius>
+```
+
+## Attributes
+
+| Attribute | Default | Description |
+|-----------|---------|-------------|
+| `height` | `600px` | CSS height of the component |
+| `vs` | `50` | Clean 1 g stall speed in kt — sets the buffet limit |
+| `vs-flap` | `44` | Full-flap stall speed in kt — used when **Flaps** is on |
+| `structural-limit` | `3.8` | Maximum load factor in g; also sets the corner speed |
+| `buffet-margin` | `5` | Knots above the accelerated stall speed at which the track starts flashing (buffet onset) |
+| `speed-min` | `40` | Minimum speed on the slider (kt) |
+| `speed-max` | `120` | Maximum speed on the slider (kt) |
+| `speed` | `70` | Initial speed (kt) |
+| `bank` | `45` | Initial bank angle (°) |
+| `show-help` | — | Set to `"false"` to hide the in-component help (?) link |
+
+## Installation
+
+```bash
+npm install @open-aviation-solutions/components
+```

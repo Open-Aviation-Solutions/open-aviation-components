@@ -9,6 +9,7 @@ export { PitchRollYawElement } from './components/PitchRollYaw'
 export { AerofoilDynamicsElement } from './components/AerofoilDynamics'
 export { CircuitDiagramElement, type PathData, type Waypoint } from './components/CircuitDiagram'
 export { CrosswindClockElement } from './components/CrosswindClock'
+export { MaximumRateMinimumRadiusElement } from './components/MaximumRateMinimumRadius'
 export {
   setEstimatedTimes,
   resetTimer,
