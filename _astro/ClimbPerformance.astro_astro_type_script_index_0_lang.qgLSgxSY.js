@@ -1,0 +1,1 @@
+import"./AerofoilDynamics.astro_astro_type_script_index_0_lang.BD2OPkpW.js";const e=document.getElementById("cp-vztp"),t=document.getElementById("climb-performance-demo");e.addEventListener("change",()=>t.setAttribute("vztp",e.value));
