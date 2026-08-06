@@ -1,0 +1,101 @@
+---
+title: Unusual Attitudes
+description: A six-pack of instruments that develops a real unusual attitude at the press of a button — the under-the-hood recovery exercise, in the briefing room.
+---
+
+import UnusualAttitudes from '../components/UnusualAttitudes.astro'
+import ComponentDescription from '../components/ComponentDescription.astro'
+
+<ComponentDescription />
+
+Recovery from unusual attitudes is flown **under the hood**, simulating flight in cloud: the student has nothing to look at but the panel. This component is that view and nothing else — no horizon, no outside picture, no aircraft. What you cannot see is as much the point as what you can.
+
+The instructor asks the student to look away and presses **Set unusual attitude**. The panel covers itself while the aircraft is flown into the upset, then uncovers on a *developed* attitude — so the student reads the end state rather than watching how it got there. From that moment the aircraft is flying on its own, and it does not politely wait: the bank steepens, the nose drops, the speed builds and the altimeter unwinds. The student interprets the panel and states or flies the recovery.
+
+<UnusualAttitudes />
+
+## The exercise
+
+1. **Set unusual attitude** — the student looks away for the countdown.
+2. The panel uncovers. Scan: attitude indicator first (which way is up, how far), then airspeed and altimeter to confirm, then the DI to tell a spiral from a straight dive.
+3. **Hold** freezes the panel if you want to talk through the scan without the picture running away.
+4. The student states and flies the recovery.
+5. **Reveal** shows what the attitude actually was, with the height lost, time taken, peak speed and peak load factor.
+6. **Show recovery** plays the correct recovery on the instruments, so the student can compare it with what they described.
+
+## What the instruments are telling you
+
+| Instrument | Nose-low (spiral dive) | Nose-high |
+|---|---|---|
+| Attitude indicator | Nose below the horizon, wings banked | Nose above the horizon |
+| Airspeed | Increasing, toward the yellow arc and VNE | Decreasing, toward the stall |
+| Altimeter | Unwinding, and unwinding faster | Steady, then starting to fall |
+| VSI | Large descent — but **lagging** the truth | Sagging late |
+| DI | Turning steadily: this is a *spiral*, not a dive | Turning slowly |
+
+The **recovery order is opposite** for the two cases, and that is the whole point of practising both:
+
+- **Nose-low:** power **off**, roll the **wings level**, *then* ease out of the dive. Pulling before the wings are level loads the airframe and tightens the spiral for very little vertical gain — at 75° of bank, simply holding altitude would need 3.9 g.
+- **Nose-high:** power **on**, lower the nose, *then* level the wings. Here the speed is the emergency; rolling first while the aircraft is slow only brings the stall closer.
+
+## Why the picture gets worse on its own
+
+A typical training aircraft is **spirally unstable**. Left alone with a wing down, the bank does not wash out — it slowly steepens. Only the vertical part of the lift vector, `L·cos φ`, holds the flight path up, so as the bank increases the nose drops, and as the nose drops the speed builds, and as the speed builds the turn tightens. That is the graveyard spiral, and it is why you cannot fly hands-off in cloud.
+
+The model here is a point-mass simulation, not an animation: nothing about the spiral is scripted. It falls out of the equations of motion, which is also why leaving the panel alone for long enough ends in ground contact.
+
+One deliberate subtlety: a fixed elevator holds an **angle of attack**, not an attitude. So an aircraft abandoned at idle power lowers its nose and descends rather than stalling — the stall needs someone to keep pulling. That is why the nose-high case mushes into a descent instead of breaking.
+
+## The VSI lags
+
+The vertical speed indicator is the one instrument here that does not tell you the truth immediately: it is modelled with a real first-order lag (3 seconds by default, `vsi-lag`). Watch the altimeter start to unwind while the VSI is still catching up. This is exactly why the taught scan believes the **attitude indicator and the altimeter first**, and treats the VSI as confirmation rather than evidence.
+
+## For instructors
+
+- **It is random by default.** The panel picks nose-low or nose-high each time, and randomises the bank direction either way, so a student cannot memorise the answer. Pin `scenario="nose-low"` (or `nose-high`) when you want to drill one case repeatedly.
+- **Start with fewer instruments.** `instruments="asi ai alt vsi"` blanks the DI so the panel is only the four the student first learns; add the DI back when you introduce the spiral, since it is what tells a spiral from a straight dive.
+- **Use Hold as a teaching pause,** not as a way to make the exercise easier — the time pressure is doing real work.
+- **Let one run to the ground** at least once. Watching 3,000 ft disappear in under a minute makes the point about hesitation better than any warning.
+- The **turn coordinator is off by default**: this model flies in balance, so its ball never moves and its needle only restates the DI. Turn it on with `instruments` if you want the full six.
+
+## For trainees
+
+1. Look away, then look back and say out loud, in order: *nose high or low, wings which way, speed doing what.*
+2. Decide the recovery **before** touching anything, and say it in order.
+3. Press **Reveal** and check your reading against the truth.
+4. Press **Show recovery** and compare its order of actions with yours.
+5. Repeat until your interpretation is instant. Then try `severity="severe"`.
+
+## Attributes
+
+| Attribute | Default | Description |
+|-----------|---------|-------------|
+| `height` | `600px` | CSS height of the component |
+| `cruise-kts` | `100` | Straight-and-level speed the exercise starts from (kt) |
+| `v_1` | `50` | Clean stall speed (kt) — the ASI green arc start, and the model's stall |
+| `v_no` | `128` | Max structural cruising speed (kt) — green/yellow boundary |
+| `v_ne` | `160` | Never-exceed speed (kt) — the red radial, and the overspeed warning |
+| `altitude` | `3000` | Starting altitude (ft) |
+| `heading` | `360` | Starting heading (°) |
+| `scenario` | `random` | `random` picks nose-low or nose-high each time; pin to `nose-low` or `nose-high` to drill one case |
+| `severity` | `standard` | `gentle`, `standard`, or `severe` |
+| `instruments` | `asi ai alt di vsi` | Which instruments are live; the rest are blanked in place |
+| `setup-seconds` | `5` | How long the "look away" cover stays up |
+| `vsi-lag` | `3` | VSI first-order lag (s); `0` removes it |
+| `show-help` | — | Set to `"false"` to hide the in-component help (?) link |
+
+## Embedding this component
+
+```html
+<script type="module">
+  import 'https://unpkg.com/@open-aviation-solutions/components/dist/lib/define.es.js';
+</script>
+
+<unusual-attitudes height="620px" scenario="random"></unusual-attitudes>
+```
+
+## Installation
+
+```bash
+npm install @open-aviation-solutions/components
+```

@@ -1,0 +1,219 @@
+:host {
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #0b0f18;
+  height: 600px;
+  font: 14px system-ui, sans-serif;
+  color: #e2e8f0;
+}
+
+:host(:focus-visible) {
+  outline: 2px solid #38bdf8;
+  outline-offset: 2px;
+}
+
+/* The panel: the 3 x 2 instrument T. Slots keep their places whatever the
+   `instruments` attribute selects — the scan is positional, so an instrument
+   that is not selected is blanked in place rather than removed from the layout.
+   Only a narrow viewport reflows it (see the media query at the end). */
+.panel {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(2, 1fr);
+  gap: 10px;
+  padding: 14px;
+  background:
+    radial-gradient(circle at 50% 0%, #1b2437 0%, #0b0f18 70%);
+}
+
+.slot {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  min-width: 0;
+}
+
+.slot canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* The "look away" cover: the student must read the developed attitude, never
+   watch it develop. */
+.cover {
+  position: absolute;
+  inset: 0;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  background: #060910;
+  z-index: 3;
+  text-align: center;
+}
+
+.cover.showing {
+  display: flex;
+}
+
+.cover-title {
+  font-size: clamp(20px, 4vw, 34px);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #f8fafc;
+}
+
+.cover-hint {
+  color: #94a3b8;
+  max-width: 32ch;
+  line-height: 1.5;
+}
+
+.cover-count {
+  font: 700 clamp(32px, 8vw, 64px) / 1 monospace;
+  color: #38bdf8;
+}
+
+/* Status banner. Pinned to the panel's top-right corner, which is dead space
+   outside the inscribed instrument circle — the top centre would cover the
+   attitude indicator, the one face that must never be obscured. */
+.banner {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  display: none;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: rgba(6, 9, 16, 0.9);
+  border: 1px solid #334155;
+  font-weight: 600;
+  z-index: 2;
+}
+
+.banner.showing {
+  display: flex;
+}
+
+.banner.alert {
+  border-color: #dc2626;
+  color: #fca5a5;
+}
+
+.controls {
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  background: #111827;
+  border-top: 1px solid #1f2937;
+}
+
+button {
+  font: inherit;
+  font-weight: 600;
+  color: #e2e8f0;
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  padding: 8px 14px;
+  cursor: pointer;
+}
+
+button:hover {
+  background: #273449;
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+button.primary {
+  background: #0369a1;
+  border-color: #0284c7;
+  color: #f0f9ff;
+}
+
+button.primary:hover {
+  background: #0284c7;
+}
+
+button.active {
+  background: #b45309;
+  border-color: #d97706;
+  color: #fffbeb;
+}
+
+.spacer {
+  flex: 1 1 auto;
+}
+
+.help {
+  color: #7dd3fc;
+  text-decoration: none;
+  font-size: 13px;
+}
+
+/* Reveal: what the attitude actually was, so the student can check their
+   interpretation against the truth. */
+.reveal {
+  display: none;
+  flex: 0 0 auto;
+  gap: 18px;
+  flex-wrap: wrap;
+  padding: 12px 14px;
+  background: #0f172a;
+  border-top: 1px solid #1f2937;
+}
+
+.reveal.showing {
+  display: flex;
+}
+
+.reveal dl {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.reveal dt {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #64748b;
+}
+
+.reveal dd {
+  margin: 0;
+  font-weight: 600;
+  color: #f1f5f9;
+}
+
+.reveal ul {
+  margin: 0;
+  padding-left: 18px;
+  color: #cbd5e1;
+  line-height: 1.6;
+}
+
+@media (max-width: 620px) {
+  .panel {
+    grid-template-columns: repeat(2, 1fr);
+    grid-template-rows: repeat(3, 1fr);
+  }
+}
