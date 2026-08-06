@@ -10,6 +10,7 @@ export { AerofoilDynamicsElement } from './components/AerofoilDynamics'
 export { CircuitDiagramElement, type PathData, type Waypoint } from './components/CircuitDiagram'
 export { CrosswindClockElement } from './components/CrosswindClock'
 export { MaximumRateMinimumRadiusElement } from './components/MaximumRateMinimumRadius'
+export { UnusualAttitudesElement } from './components/UnusualAttitudes'
 export {
   setEstimatedTimes,
   resetTimer,

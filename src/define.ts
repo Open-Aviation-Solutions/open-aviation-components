@@ -10,6 +10,7 @@ import { AerofoilDynamicsElement } from './components/AerofoilDynamics'
 import { CircuitDiagramElement } from './components/CircuitDiagram'
 import { CrosswindClockElement } from './components/CrosswindClock'
 import { MaximumRateMinimumRadiusElement } from './components/MaximumRateMinimumRadius'
+import { UnusualAttitudesElement } from './components/UnusualAttitudes'
 
 customElements.define('four-forces',          FourForcesElement)
 customElements.define('climb-performance',    ClimbPerformanceElement)
@@ -19,3 +20,4 @@ customElements.define('aerofoil-dynamics',    AerofoilDynamicsElement)
 customElements.define('circuit-diagram',      CircuitDiagramElement)
 customElements.define('crosswind-clock',      CrosswindClockElement)
 customElements.define('max-rate-min-radius',  MaximumRateMinimumRadiusElement)
+customElements.define('unusual-attitudes',    UnusualAttitudesElement)

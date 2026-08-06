@@ -20,6 +20,7 @@ const BASE = '/open-aviation-components'
 const TARGETS = [
   { slug: 'circuit-diagram', selector: 'circuit-diagram', file: 'circuit-diagram.png' },
   { slug: 'crosswind-clock', selector: 'crosswind-clock', file: 'crosswind-clock.png' },
+  { slug: 'unusual-attitudes', selector: 'unusual-attitudes', file: 'unusual-attitudes.png' },
 ]
 
 const outputDir = new URL('../screenshots/', import.meta.url)
@@ -65,6 +66,46 @@ try {
       return !!canvas && canvas.width > 0 && canvas.height > 0
     }, target.selector, { timeout: 20000 })
     await page.waitForTimeout(1500)
+
+    // Optional unusual-attitude run-up: press "Set unusual attitude", sit out
+    // the look-away cover, and let the upset develop for UA_DEVELOP seconds
+    // before capture — the only way to see the panel in the state the exercise
+    // is actually about. UA_REVEAL=1 also opens the Reveal panel.
+    if (process.env.UA_DEVELOP && target.selector === 'unusual-attitudes') {
+      const developSeconds = Number(process.env.UA_DEVELOP) || 10
+      // Pin the scenario for tuning (the component is random by default).
+      if (process.env.UA_SCENARIO) {
+        await page.evaluate(([selector, scenario]) => {
+          document.querySelector(selector)?.setAttribute('scenario', scenario)
+        }, [target.selector, process.env.UA_SCENARIO])
+      }
+      await page.evaluate((selector) => {
+        const host = document.querySelector(selector)
+        const buttons = host?.shadowRoot?.querySelectorAll('button')
+        buttons?.[0]?.click()   // Set unusual attitude
+      }, target.selector)
+      const setupSeconds = Number(
+        await page.getAttribute(target.selector, 'setup-seconds') ?? 5
+      )
+      await page.waitForTimeout((setupSeconds + developSeconds) * 1000)
+      // Freeze the panel before capture. Playwright's element-stability check
+      // will not settle on a live panel under the software-GL renderer this
+      // script uses for the Three.js components.
+      await page.evaluate((selector) => {
+        const host = document.querySelector(selector)
+        const buttons = host?.shadowRoot?.querySelectorAll('button')
+        buttons?.[1]?.click()   // Hold
+      }, target.selector)
+      await page.waitForTimeout(300)
+      if (process.env.UA_REVEAL) {
+        await page.evaluate((selector) => {
+          const host = document.querySelector(selector)
+          const buttons = host?.shadowRoot?.querySelectorAll('button')
+          buttons?.[2]?.click()   // Reveal
+        }, target.selector)
+        await page.waitForTimeout(300)
+      }
+    }
 
     // Optional overhead (plan) view: reposition the camera straight above the
     // framed centre, looking down, with the runway pointing up the screen.

@@ -17,6 +17,7 @@ Interactive components for aviation training, implemented as standard web compon
 | [CrosswindClock](#crosswindclock) | `<crosswind-clock>` | Windsock + clock-code crosswind estimator with live sin comparison |
 | [FourForces](#fourforces) | `<four-forces>` | 3D visualization of the four aerodynamic forces |
 | [PitchRollYaw](#pitchrollyaw) | `<pitch-roll-yaw>` | 3D aircraft viewer for the three axes of flight |
+| [UnusualAttitudes](#unusualattitudes) | `<unusual-attitudes>` | Six-pack instrument panel that develops an unusual attitude to recover from |
 
 ---
 
@@ -75,6 +76,12 @@ An interactive 3D visualization of the four aerodynamic forces — Lift, Weight,
 ## PitchRollYaw
 
 An interactive 3D aircraft viewer for introducing the three axes of flight and their rotational terminology — pitch, roll, and yaw. Sliders rotate the aircraft about its body axes and highlight the corresponding axis line, so mixed rotations compose the way they do in flight.
+
+---
+
+## UnusualAttitudes
+
+A six-pack of round-dial instruments for the under-the-hood unusual-attitude recovery exercise. The student looks away, the instructor presses a button, and the panel uncovers on a *developed* attitude — nose-low spiral or nose-high, with the bank direction randomised. The upset is not an animation: a point-mass flight model with real spiral instability keeps developing it, so hesitating costs height and airspeed, and the VSI lags the way a real one does. **Reveal** shows what the attitude actually was; **Show recovery** plays the correct recovery back on the instruments.
 
 ---
 
