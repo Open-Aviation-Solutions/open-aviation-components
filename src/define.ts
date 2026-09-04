@@ -4,6 +4,7 @@
 
 import { FourForcesElement } from './components/FourForces'
 import { ClimbPerformanceElement } from './components/ClimbPerformance'
+import { TotalDragCurveElement } from './components/TotalDragCurve'
 import { BriefingOverviewElement } from './components/BriefingOverview'
 import { PitchRollYawElement } from './components/PitchRollYaw'
 import { AerofoilDynamicsElement } from './components/AerofoilDynamics'
@@ -14,6 +15,7 @@ import { UnusualAttitudesElement } from './components/UnusualAttitudes'
 
 customElements.define('four-forces',          FourForcesElement)
 customElements.define('climb-performance',    ClimbPerformanceElement)
+customElements.define('total-drag-curve',     TotalDragCurveElement)
 customElements.define('briefing-overview',    BriefingOverviewElement)
 customElements.define('pitch-roll-yaw',       PitchRollYawElement)
 customElements.define('aerofoil-dynamics',    AerofoilDynamicsElement)
