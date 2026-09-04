@@ -1,0 +1,16 @@
+---
+---
+<!--
+  Calibrated to the Piper Warrior 151 (PA-28-151), the reference type used
+  elsewhere in the RPL(A) briefings: vs=43 matches the clean stall speed used
+  to calibrate <climb-performance> for the same type. Vmd always lands exactly
+  at the midpoint of vs and cruise-kts (see TotalDragCurve/INSTRUCTIONS.md),
+  so cruise-kts=103 is chosen to put Vmd at 73 kt — the published best glide
+  speed at max gross weight. weight-kg=1055 is the Warrior 151's MTOW
+  (2325 lb), giving the approximate-Newtons drag readouts.
+-->
+<total-drag-curve height="460px" vs="43" cruise-kts="103" weight-kg="1055" show-help="false"></total-drag-curve>
+
+<script>
+  import '../../src/define'
+</script>

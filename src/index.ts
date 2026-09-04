@@ -4,6 +4,7 @@
 
 export { FourForcesElement } from './components/FourForces'
 export { ClimbPerformanceElement } from './components/ClimbPerformance'
+export { TotalDragCurveElement } from './components/TotalDragCurve'
 export { BriefingOverviewElement } from './components/BriefingOverview'
 export { PitchRollYawElement } from './components/PitchRollYaw'
 export { AerofoilDynamicsElement } from './components/AerofoilDynamics'

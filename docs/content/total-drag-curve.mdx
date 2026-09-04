@@ -1,0 +1,91 @@
+---
+title: Total Drag Curve
+description: An interactive chart showing parasite drag, induced drag, and their sum — explore why minimum total drag is the best glide speed.
+---
+
+import TotalDragCurve from '../components/TotalDragCurve.astro'
+import ComponentDescription from '../components/ComponentDescription.astro'
+
+<ComponentDescription />
+
+Best glide speed is usually just handed to students as a published number. What's missing is *why* one particular speed gives the greatest gliding distance — and the answer is that it's the speed of minimum total drag, where two opposing effects, induced drag and parasite drag, happen to balance.
+
+This chart splits drag into its two causes and lets you watch them cross. Drag the cursor and the sum readout shows exactly how the two curves add up at every speed; at the minimum, a callout confirms that parasite drag equals induced drag there — the reason that speed, and no other, is the best-glide point.
+
+<TotalDragCurve />
+
+## Description
+
+The chart plots three curves against airspeed:
+
+- **Parasite drag** (dashed sky blue) — drag from skin friction and form drag, which rises with the square of speed. Faster flight means more parasite drag.
+- **Induced drag** (dashed purple) — drag from generating lift, which falls with the square of speed. Slower flight (higher angle of attack) means more induced drag.
+- **Total drag** (bold red) — the sum of the two. Because one rises and the other falls with speed, the sum has a single minimum.
+
+Drag the vertical cursor left and right across the chart (or use the arrow keys) to explore drag at any airspeed. The cursor snaps automatically to stall speed, minimum drag speed (Vmd), and maximum speed.
+
+At each cursor position:
+- **Dots on each curve** show the exact parasite, induced, and total drag values
+- **A sum readout** (e.g. `0.32 + 0.68 = 1.00`) shows the addition explicitly
+- **At Vmd**, an extra callout confirms parasite drag equals induced drag — the condition that defines the minimum
+
+## For instructors
+
+Use it to connect the drag curve to best glide speed without pulling in unrelated performance material:
+
+- **Why there's a minimum at all** — one curve rises, the other falls; their sum must have a single lowest point. Move the cursor slowly across the chart and watch the total curve trace a shallow U
+- **Parasite = Induced at Vmd** — park the cursor on Vmd and read the callout. This is the textbook definition of minimum drag, made visible rather than asserted
+- **Below Vmd** — induced drag dominates and rises steeply as speed falls further, which is why flying too slow costs glide distance just as flying too fast does
+- **Above Vmd** — parasite drag dominates and grows with the square of speed, which is why "a bit faster for safety margin" on a real glide quietly shortens the distance you can reach
+- **Bridge to best glide** — minimum total drag is maximum lift-to-drag ratio, which is exactly what stretches a glide the furthest. This is the one physical fact behind the published best-glide number
+
+## For trainees
+
+1. Start at **Vmd** and read the callout — parasite and induced drag are equal here
+2. Move the cursor **left toward stall** — watch induced drag climb steeply while parasite drag keeps falling. Total drag rises because induced drag is winning
+3. Move the cursor **right toward Vmax** — watch parasite drag climb steeply while induced drag keeps falling. Total drag rises again, now because parasite drag is winning
+4. Compare the sum readout at a few speeds either side of Vmd — the two numbers trade off, but their sum is smallest only at one speed
+
+The chart uses a normalised speed scale rather than knots by default, so it represents the shape of the drag curve for any aircraft. The proportions and the minimum-drag point are physically correct even without aircraft-specific numbers.
+
+### Approximate Newtons
+
+Set the `weight-kg` attribute and the y-axis switches from normalised units to approximate Newtons. In a glide, lift ≈ weight, and L/D is at its maximum exactly at Vmd — so total drag at Vmd is approximately weight ÷ (L/D)max for any aircraft, which is enough to turn the curve into a force scale from weight alone. The component assumes an L/D max of 10, representative of a light GA trainer (it matches the roughly 10:1 glide ratio for the Warrior 151 used elsewhere in RPL(A) training material) — treat the numbers as an order-of-magnitude teaching aid rather than a type-specific figure.
+
+## Key speeds
+
+| Speed | Color | Definition |
+|-------|-------|------------|
+| **Vmd** | green | Minimum total drag — best glide speed |
+
+## Interaction
+
+- Click and drag anywhere on the chart to move the cursor.
+- The cursor snaps to VS, Vmd, and Vmax when nearby.
+- Click the component then use **← / →** arrow keys to step the cursor.
+
+## Embedding this component
+
+```html
+<script type="module">
+  import 'https://unpkg.com/@open-aviation-solutions/components/dist/lib/define.es.js';
+</script>
+
+<total-drag-curve height="400px"></total-drag-curve>
+```
+
+## Attributes
+
+| Attribute | Default | Description |
+|-----------|---------|-------------|
+| `height` | `460px` | CSS height of the component |
+| `vs` | — | Stall speed in kts. When set alongside `cruise-kts`, x-axis tick labels are shown in kts |
+| `cruise-kts` | — | Speed at the right edge of the chart (Vmax = 1.5 × Vmd). Used with `vs` to calibrate kts axis labels |
+| `weight-kg` | — | Aircraft weight in kg. When set, the y-axis and drag readouts switch to approximate Newtons (see above) |
+| `show-help` | — | Set to `"false"` to hide the in-component help (?) link |
+
+## Installation
+
+```bash
+npm install @open-aviation-solutions/components
+```
