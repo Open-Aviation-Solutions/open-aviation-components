@@ -30,6 +30,18 @@ const VMD_NORM  = 1.00
 
 const N_SAMPLES = 300
 
+// ── Approximate Newtons conversion ─────────────────────────────────────────────
+// In a glide, lift ≈ weight, and L/D is maximum exactly at Vmd — so total drag
+// at Vmd ≈ weight / (L/D)max for any aircraft. That gives a one-number way to
+// turn the normalised curve into an approximate force scale from a `weight-kg`
+// attribute alone: newtons = normalisedDrag · (weight_kg · g) / LD_MAX_APPROX.
+// LD_MAX_APPROX = 10 is representative of a light GA trainer — it matches the
+// ~10:1 glide ratio for the Warrior 151 cited in the RPL(A) Forced Landings
+// brief this component was built for. It's a teaching approximation, not a
+// type-specific figure (real light singles vary roughly 7–12).
+const G = 9.80665
+const LD_MAX_APPROX = 10
+
 function parasiteDrag(v: number): number { return 0.5 * v * v }
 function inducedDrag(v: number): number { return 0.5 / (v * v) }
 function totalDrag(v: number): number { return parasiteDrag(v) + inducedDrag(v) }
@@ -54,7 +66,7 @@ interface ChartArea {
 }
 
 export class TotalDragCurveElement extends HTMLElement {
-  static observedAttributes = ['height', 'vs', 'cruise-kts', 'show-help']
+  static observedAttributes = ['height', 'vs', 'cruise-kts', 'weight-kg', 'show-help']
 
   private _helpLinkEl!: HTMLAnchorElement
   private _canvas: HTMLCanvasElement
@@ -68,6 +80,7 @@ export class TotalDragCurveElement extends HTMLElement {
   private _io: IntersectionObserver | null = null
   private _vsKts: number | null = 45
   private _cruiseKts: number | null = 145
+  private _weightKg: number | null = null
 
   constructor() {
     super()
@@ -131,6 +144,10 @@ export class TotalDragCurveElement extends HTMLElement {
     if (name === 'height') this.style.height = value ?? ''
     if (name === 'vs') this._vsKts = value === null ? 45 : (value ? parseFloat(value) : null)
     if (name === 'cruise-kts') this._cruiseKts = value === null ? 145 : (value ? parseFloat(value) : null)
+    if (name === 'weight-kg') {
+      const parsed = value ? parseFloat(value) : NaN
+      this._weightKg = Number.isFinite(parsed) && parsed > 0 ? parsed : null
+    }
     if (name === 'show-help') this._helpLinkEl.style.display = value === 'false' ? 'none' : ''
     this._dirty = true
   }
@@ -189,6 +206,17 @@ export class TotalDragCurveElement extends HTMLElement {
   }
   private _valToY(val: number, area: ChartArea, yMax: number): number {
     return area.y + area.h * (1 - val / yMax)
+  }
+
+  // Newtons conversion is a uniform rescale (see LD_MAX_APPROX above), so it
+  // never affects plotted positions — only these display strings.
+  private _axisLabel(normVal: number): string {
+    if (this._weightKg === null) return normVal.toFixed(1)
+    return `${Math.round(normVal * this._weightKg * G / LD_MAX_APPROX)}`
+  }
+  private _dragValueLabel(normVal: number): string {
+    if (this._weightKg === null) return normVal.toFixed(2)
+    return `${Math.round(normVal * this._weightKg * G / LD_MAX_APPROX)} N`
   }
 
   // Nudge label centres apart so neighbouring labels don't overlap, keeping them
@@ -302,14 +330,14 @@ export class TotalDragCurveElement extends HTMLElement {
     for (let yv = 0; yv <= yMax + 0.01; yv += yStep) {
       const py = this._valToY(yv, area, yMax)
       ctx.beginPath(); ctx.moveTo(area.x - 5, py); ctx.lineTo(area.x, py); ctx.stroke()
-      if (yv > 0.01) ctx.fillText(yv.toFixed(1), area.x - 8, py)
+      if (yv > 0.01) ctx.fillText(this._axisLabel(yv), area.x - 8, py)
     }
 
     ctx.save()
     ctx.translate(area.x - 46, area.y + area.h / 2); ctx.rotate(-Math.PI / 2)
     ctx.fillStyle = '#475569'; ctx.font = '13px system-ui,sans-serif'
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
-    ctx.fillText('Drag (norm.)', 0, 0)
+    ctx.fillText(this._weightKg === null ? 'Drag (norm.)' : 'Drag (N)', 0, 0)
     ctx.restore()
 
     // ── X-axis labels ──────────────────────────────────────────────────────────
@@ -413,7 +441,7 @@ export class TotalDragCurveElement extends HTMLElement {
       ctx.beginPath(); ctx.arc(cursorX, dotY, 5, 0, Math.PI * 2)
       ctx.fillStyle = color; ctx.fill()
       ctx.strokeStyle = BG; ctx.lineWidth = 1.5; ctx.stroke()
-      const text = `${label}: ${val.toFixed(2)}`
+      const text = `${label}: ${this._dragValueLabel(val)}`
       const labelX = onLeft ? cursorX - 10 : cursorX + 10
       const labelY = Math.max(area.y + 8, Math.min(area.y + area.h - 8, dotY + yOffset))
       ctx.font = 'bold 13px system-ui,sans-serif'
@@ -424,7 +452,7 @@ export class TotalDragCurveElement extends HTMLElement {
     }
 
     // Sum readout — makes the "the two curves add up" point explicit in numbers.
-    const sumText = `${dp.toFixed(2)} + ${di.toFixed(2)} = ${dt.toFixed(2)}`
+    const sumText = `${this._dragValueLabel(dp)} + ${this._dragValueLabel(di)} = ${this._dragValueLabel(dt)}`
     ctx.font = '13px system-ui,sans-serif'
     const sumMetrics = ctx.measureText(sumText)
     const sumX = Math.max(area.x + 4, Math.min(area.x + area.w - sumMetrics.width - 4, cursorX - sumMetrics.width / 2))

@@ -48,6 +48,10 @@ Use it to connect the drag curve to best glide speed without pulling in unrelate
 
 The chart uses a normalised speed scale rather than knots by default, so it represents the shape of the drag curve for any aircraft. The proportions and the minimum-drag point are physically correct even without aircraft-specific numbers.
 
+### Approximate Newtons
+
+Set the `weight-kg` attribute and the y-axis switches from normalised units to approximate Newtons. In a glide, lift ≈ weight, and L/D is at its maximum exactly at Vmd — so total drag at Vmd is approximately weight ÷ (L/D)max for any aircraft, which is enough to turn the curve into a force scale from weight alone. The component assumes an L/D max of 10, representative of a light GA trainer (it matches the roughly 10:1 glide ratio for the Warrior 151 used elsewhere in RPL(A) training material) — treat the numbers as an order-of-magnitude teaching aid rather than a type-specific figure.
+
 ## Key speeds
 
 | Speed | Color | Definition |
@@ -77,6 +81,7 @@ The chart uses a normalised speed scale rather than knots by default, so it repr
 | `height` | `460px` | CSS height of the component |
 | `vs` | — | Stall speed in kts. When set alongside `cruise-kts`, x-axis tick labels are shown in kts |
 | `cruise-kts` | — | Speed at the right edge of the chart (Vmax = 1.5 × Vmd). Used with `vs` to calibrate kts axis labels |
+| `weight-kg` | — | Aircraft weight in kg. When set, the y-axis and drag readouts switch to approximate Newtons (see above) |
 | `show-help` | — | Set to `"false"` to hide the in-component help (?) link |
 
 ## Installation

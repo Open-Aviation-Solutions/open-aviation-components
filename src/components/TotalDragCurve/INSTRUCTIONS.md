@@ -61,11 +61,29 @@ At the cursor position:
 - Exactly at Vmd, an extra callout reads "Parasite = Induced → minimum total
   drag (best glide speed)"
 
+## Approximate Newtons (`weight-kg`)
+
+In a glide, lift ≈ weight, and L/D is maximum exactly at Vmd — so total drag at
+Vmd ≈ weight / (L/D)max for *any* aircraft. `weight-kg` alone is therefore
+enough to turn the normalised curve into an approximate force scale:
+`newtons = normalisedDrag · (weight_kg · G) / LD_MAX_APPROX`, with
+`LD_MAX_APPROX = 10` (representative of a light GA trainer — matches the ~10:1
+glide ratio for the Warrior 151 cited in the RPL(A) Forced Landings brief this
+component was built for; real light singles vary roughly 7–12, so treat the
+Newtons shown as an order-of-magnitude teaching aid, not a type-specific
+figure).
+
+Because it's a uniform rescale of the y-axis, it never changes curve shape or
+where anything is plotted (`_valToY` still works in normalised units
+throughout) — only the axis, dot, sum-readout, and title text change
+(`_axisLabel` / `_dragValueLabel`).
+
 ## Attributes
 
 - `height` — CSS height of the component (e.g., `400px`). Defaults to `460px` via CSS.
 - `vs` — stall speed in kts. Defaults to `45`. Set to empty string (`vs=""`) for normalised labels.
 - `cruise-kts` — speed at VMAX_NORM = 1.5 in kts. Defaults to `145`. Set to empty string for normalised labels.
+- `weight-kg` — aircraft weight in kg. When set, the y-axis and all drag readouts switch from normalised units to approximate Newtons (see above). Unset by default (normalised).
 - `show-help` — set to `"false"` to hide the in-component help (?) link.
 
 ## No Three.js dependency
