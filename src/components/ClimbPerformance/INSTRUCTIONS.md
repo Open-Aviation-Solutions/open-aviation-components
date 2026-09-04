@@ -22,7 +22,12 @@ TA(v) = TA_MAX·(vztp − v)/(vztp − VS_NORM) thrust available (fixed-pitch pr
 PA(v) = TA(v)·v                            power available (parabola, peaks at vztp/2)
 ```
 
-`TA_MAX ≈ 2.784` is fixed so TA/TR ≈ 1.31 at VS (typical GA); it does **not** depend on `vztp`.
+`TA_MAX = 2.125` is fixed so TA equals TR (drag) exactly at VS — excess thrust is zero at the
+stall boundary, the aircraft's aerodynamic limit. It does **not** depend on `vztp`. (An earlier
+version calibrated `TA_MAX` to a `TA/TR ≈ 1.31` margin at VS, matching what was assumed to be
+typical GA thrust reserve — but that left a comfortable ~31% thrust margin still showing at the
+stall edge of the chart, contradicting the "below stall it disappears entirely" framing used
+in the docs, and was corrected to the TA=TR-at-VS calibration below.)
 
 Key normalised speeds (constants and solvers live at the top of `index.ts`):
 - `VS_NORM = 0.50` — stall (chart left edge)
@@ -39,15 +44,20 @@ It is the single per-plane parameter, exposed as the `vztp` attribute (see below
 is nearly flat across the envelope — and pushes `vy` **up towards Vmd**.
 
 This matters because the idealised parabolic drag polar puts minimum *power* required at
-`(1/3)^¼·Vmd ≈ 0.76·Vmd`, well below Vmd. An earlier `vztp = 2.0` left `vy ≈ 0.87` — about
-13 kt below Vmd in the vs=45/cruise=145 demo — which wrongly implied best glide was much faster
-than Vy. Real piston POH data has best-rate (Vy) and best-glide (Vmd) speeds nearly coincident,
-so the default is now `vztp = 2.70`, giving `vy ≈ 0.98 ≈ Vmd`.
+`(1/3)^¼·Vmd ≈ 0.76·Vmd`, well below Vmd. Real piston POH data has best-rate (Vy) and
+best-glide (Vmd) speeds nearly coincident, so the default `vztp = 3.30` is chosen to give
+`vy ≈ 1.00 ≈ Vmd`.
+
+(Note: `vztp` was previously calibrated against a `TA_MAX` set for a `TA/TR ≈ 1.31` margin at
+VS. Fixing `TA_MAX` to give zero excess thrust at VS — see above — changes the TA curve's
+slope for a given `vztp`, which shifts `vy` for the same `vztp` value. The default moved from
+`2.70` to `3.30`, and the per-family presets below moved by a similar amount, to keep
+`vy ≈ Vmd` at the default.)
 
 Suggested values per aircraft family:
-- `vztp = 3.0` → Vy a couple of knots **above** Vmd (Cessna 152/172 pattern)
-- `vztp = 2.7` → Vy ≈ Vmd (default)
-- `vztp = 2.5` → Vy a couple of knots **below** Vmd (Piper PA-28 pattern)
+- `vztp = 3.6` → Vy a couple of knots **above** Vmd (Cessna 152/172 pattern)
+- `vztp = 3.3` → Vy ≈ Vmd (default)
+- `vztp = 3.0` → Vy a couple of knots **below** Vmd (Piper PA-28 pattern)
 
 `buildModel(vztp)` recomputes `taSlope`, `vx`, `vy`, and the excess-strip ranges; it runs once
 at construction and again whenever the `vztp` attribute changes.
@@ -66,7 +76,7 @@ At the cursor position:
 - `vs` — stall speed in kts. Defaults to `45`. Set to empty string (`vs=""`) for normalised labels.
 - `cruise-kts` — speed at VMAX_NORM = 1.5 in kts. Defaults to `145`. Set to empty string for normalised labels.
 - `vztp` — normalised prop zero-thrust speed; tunes the Vy–Vmd relationship (see the physics
-  model above). Defaults to `2.70` (Vy ≈ Vmd). Try `3.0` (C152/C172) or `2.5` (PA-28). Values
+  model above). Defaults to `3.30` (Vy ≈ Vmd). Try `3.6` (C152/C172) or `3.0` (PA-28). Values
   ≤ `VMAX_NORM` (1.5) or non-numeric are ignored and fall back to the default.
 
 ## No Three.js dependency

@@ -22,20 +22,24 @@ sheet.replaceSync(styles)
 //          It is the single per-plane knob (the `vztp` attribute). A higher vztp makes
 //          the thrust/power-available curve flatter — closer to real props, whose power
 //          available is nearly flat across the envelope — and pushes Vy up towards Vmd.
-// TA_MAX = thrust at VS, set so TA/TR ≈ 1.31 at VS — matching a typical GA aircraft.
-//          Independent of vztp (depends only on VS_NORM and the 1.31 calibration).
+// TA_MAX = thrust at VS, set EQUAL to thrust required (drag) at VS, so excess thrust
+//          (TA−TR) is exactly zero at the stall boundary — the aircraft has no thrust
+//          margin left at the aerodynamic limit of the chart. This is the standard
+//          textbook shape (TA and TR meet at both ends of the flyable speed range, with
+//          a single excess-thrust hump peaking at Vx in between) and matches the
+//          "below stall it disappears entirely" framing already used in the docs.
+//          Independent of vztp (depends only on VS_NORM).
 //
-// The default vztp = 2.70 places Vy (≈0.98) essentially at Vmd (best glide, 1.0),
-// matching piston POH data where best-rate and best-glide speeds nearly coincide. With
-// the old vztp = 2.0, Vy sat at ≈0.87 — ~13 kt below Vmd in the vs=45/cruise=145 demo —
-// which wrongly implied best glide was much faster than Vy. Suggested per-family values:
-//   vztp = 3.0  → Vy a couple of knots above Vmd  (Cessna 152/172 pattern)
-//   vztp = 2.7  → Vy ≈ Vmd                          (default)
-//   vztp = 2.5  → Vy a couple of knots below Vmd   (Piper PA-28 pattern)
+// The default vztp = 3.30 places Vy (≈1.00) essentially at Vmd (best glide, 1.0),
+// matching piston POH data where best-rate and best-glide speeds nearly coincide.
+// Suggested per-family values:
+//   vztp = 3.6  → Vy a couple of knots above Vmd  (Cessna 152/172 pattern)
+//   vztp = 3.3  → Vy ≈ Vmd                          (default)
+//   vztp = 3.0  → Vy a couple of knots below Vmd   (Piper PA-28 pattern)
 const VS_NORM   = 0.50
 const VMAX_NORM = 1.50
-const DEFAULT_VZTP = 2.70
-const TA_MAX    = 1.31 * 0.5 * (VS_NORM * VS_NORM + 1 / (VS_NORM * VS_NORM))  // ≈ 2.784
+const DEFAULT_VZTP = 3.30
+const TA_MAX    = 0.5 * (VS_NORM * VS_NORM + 1 / (VS_NORM * VS_NORM))  // = 2.125
 
 const N_SAMPLES = 300
 
