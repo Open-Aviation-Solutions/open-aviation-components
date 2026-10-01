@@ -43,6 +43,10 @@ const DEFAULT_SKY_COLOR = '#9ec9e8'
 // ---- track flythrough ("fly this track") ---------------------------------
 /** Camera height (world units) above the track while flying it. */
 const FLIGHT_HEIGHT_ABOVE_TRACK = 10
+/** Distance (world units) ahead of the camera that the orbit target sits while a
+ * flight is paused. Kept tiny so dragging turns the view from the aircraft's
+ * position (look around in place) rather than swinging it around a distant point. */
+const LOOK_AROUND_PIVOT_DISTANCE = 1
 /** Track-height band (world units) over which the crab eases in/out: none at or
  * below `CRAB_GROUND_HEIGHT` (rolling, aligned with the runway) ramping to the
  * full crab angle by `CRAB_FULL_HEIGHT`, so lift-off and touchdown aren't a snap. */
@@ -107,6 +111,17 @@ const INSET_SIZE_MAX = 150
 /** Margin (CSS px) of the inset box from the canvas edges. */
 const INSET_MARGIN = 10
 
+// ---- threshold-view inset (look from the aircraft to the threshold) --------
+/** Vertical field of view (degrees) of the threshold-view camera — a little
+ * narrower than the main view so the runway reads from across the circuit. */
+const THRESHOLD_VIEW_FOV = 40
+/** Inset width as a fraction of the canvas width, clamped to a pixel range; the
+ * height follows from `THRESHOLD_VIEW_ASPECT` (width / height). */
+const THRESHOLD_VIEW_SIZE_FRACTION = 0.3
+const THRESHOLD_VIEW_WIDTH_MIN = 150
+const THRESHOLD_VIEW_WIDTH_MAX = 260
+const THRESHOLD_VIEW_ASPECT = 4 / 3
+
 const PLAY_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2.5v11l9-5.5z"/></svg>'
 const PAUSE_ICON =
   '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="4" y="3" width="3.2" height="10" rx="1"/><rect x="8.8" y="3" width="3.2" height="10" rx="1"/></svg>'
@@ -159,6 +174,12 @@ interface PlaybackState {
   startPos: THREE.Vector3
   startQuat: THREE.Quaternion
   up: THREE.Vector3
+  /** Where the flight currently is on the track (world). Kept separately from the
+   * camera, which the user can orbit away while paused. */
+  currentPosition: THREE.Vector3
+  /** The aircraft's orientation at `currentPosition` (nose along the crabbed
+   * heading), likewise independent of a paused look-around. */
+  currentQuaternion: THREE.Quaternion
   /** Unit horizontal direction the wind blows *toward*, in world space. */
   windToward: THREE.Vector3
   /** Wind speed / airspeed; `0` disables crab (camera faces straight along track). */
@@ -214,6 +235,7 @@ class CircuitDiagramElement extends HTMLElement {
     'show-help',
     'show-aim-line',
     'show-wind-indicator',
+    'show-threshold-view',
     'sync-group',
   ]
 
@@ -259,6 +281,11 @@ class CircuitDiagramElement extends HTMLElement {
   private _windInsetFrameEl: HTMLDivElement | null = null
   /** Last horizontal view azimuth, reused when the camera looks straight down. */
   private _insetAzimuth = 0
+
+  // Threshold-view inset: the main scene re-rendered from the flight position,
+  // looking at the landing threshold, into a bottom-left viewport.
+  private _thresholdCamera: THREE.PerspectiveCamera | null = null
+  private _thresholdViewFrameEl: HTMLDivElement | null = null
 
   // Scene state
   private _sceneReady = false
@@ -313,6 +340,17 @@ class CircuitDiagramElement extends HTMLElement {
     this._windInsetFrameEl = windInsetFrame
     root.appendChild(windInsetFrame)
 
+    // Frame + caption over the threshold-view inset (shown only during a flight).
+    const thresholdViewFrame = document.createElement('div')
+    thresholdViewFrame.className = 'cd-wind-inset cd-threshold-view'
+    thresholdViewFrame.style.display = 'none'
+    const thresholdViewLabel = document.createElement('span')
+    thresholdViewLabel.className = 'cd-wind-inset-label'
+    thresholdViewLabel.textContent = 'THRESHOLD'
+    thresholdViewFrame.appendChild(thresholdViewLabel)
+    this._thresholdViewFrameEl = thresholdViewFrame
+    root.appendChild(thresholdViewFrame)
+
     shadow.appendChild(root)
 
     this._boundLoop = this._loop.bind(this)
@@ -366,6 +404,8 @@ class CircuitDiagramElement extends HTMLElement {
       // The render loop reads the attribute each frame; nothing to rebuild.
     } else if (name === 'show-wind-indicator') {
       this._applyWindIndicatorVisibility()
+    } else if (name === 'show-threshold-view') {
+      // The render loop reads the attribute each frame; nothing to rebuild.
     } else if (name === 'sync-group') {
       this._refreshBroadcastChannel()
     } else {
@@ -528,6 +568,12 @@ class CircuitDiagramElement extends HTMLElement {
     this._applySkyColor()
 
     this._camera = new THREE.PerspectiveCamera(50, width / height, 1, 50000)
+    this._thresholdCamera = new THREE.PerspectiveCamera(
+      THRESHOLD_VIEW_FOV,
+      THRESHOLD_VIEW_ASPECT,
+      1,
+      50000
+    )
 
     this._orbitControls = new OrbitControls(this._camera, this._renderer.domElement)
     this._orbitControls.enableDamping = true
@@ -914,6 +960,73 @@ class CircuitDiagramElement extends HTMLElement {
     renderer.setViewport(0, 0, this._root.clientWidth, height)
   }
 
+  // ---- threshold-view inset ----------------------------------------------
+
+  /** Bottom-left pixel box of the threshold view (CSS px, origin top-left), kept
+   * clear of the legend (top-left) and the wind inset (bottom-right). */
+  private _thresholdViewBox(): { width: number; height: number; left: number; top: number } {
+    const rootWidth = this._root.clientWidth
+    const rootHeight = this._root.clientHeight
+    const width = Math.round(
+      Math.min(
+        THRESHOLD_VIEW_WIDTH_MAX,
+        Math.max(THRESHOLD_VIEW_WIDTH_MIN, rootWidth * THRESHOLD_VIEW_SIZE_FRACTION)
+      )
+    )
+    const height = Math.round(width / THRESHOLD_VIEW_ASPECT)
+    return { width, height, left: INSET_MARGIN, top: rootHeight - height - INSET_MARGIN }
+  }
+
+  /**
+   * Render the view from the current flight position to the landing threshold
+   * (world origin) into the bottom-left corner. Shown whenever a flight is on the
+   * track — flying or paused — so a paused flight can be discussed with the
+   * threshold in sight regardless of where the main camera has been orbited.
+   */
+  private _renderThresholdView() {
+    const renderer = this._renderer
+    const camera = this._thresholdCamera
+    const frame = this._thresholdViewFrameEl
+    if (!renderer || !camera || !frame || !this._scene) return
+
+    const playback = this._playback
+    const active = playback?.phase === 'fly' && this._boolAttr('show-threshold-view')
+    const display = active ? '' : 'none'
+    if (frame.style.display !== display) frame.style.display = display
+    if (!active) return
+
+    const { width, height, left, top } = this._thresholdViewBox()
+    frame.style.width = `${width}px`
+    frame.style.height = `${height}px`
+    frame.style.left = `${left}px`
+    frame.style.top = `${top}px`
+
+    camera.position.copy(playback.currentPosition)
+    camera.up.set(0, 1, 0)
+    camera.lookAt(0, 0, 0)
+
+    // Show just the airfield and terrain: the paths (ribbons, curtains, labels)
+    // and the aiming line only clutter the picture of the field from here.
+    const hidden = [
+      ...this._pathObjects.map((objects): THREE.Object3D => objects.group),
+      this._aimLine,
+      this._aimMarker,
+    ].filter((object): object is THREE.Object3D => !!object && object.visible)
+    for (const object of hidden) object.visible = false
+
+    const rootHeight = this._root.clientHeight
+    // setViewport/setScissor use CSS px with origin at the bottom-left.
+    const y = rootHeight - top - height
+    renderer.setScissorTest(true)
+    renderer.setViewport(left, y, width, height)
+    renderer.setScissor(left, y, width, height)
+    renderer.render(this._scene, camera)
+    renderer.setScissorTest(false)
+    renderer.setViewport(0, 0, this._root.clientWidth, rootHeight)
+
+    for (const object of hidden) object.visible = true
+  }
+
   // ---- nose-forward aiming line ------------------------------------------
 
   /** One-time setup of the dashed aiming-line tube + its ground-intercept marker. */
@@ -989,10 +1102,10 @@ class CircuitDiagramElement extends HTMLElement {
     const THREE = this._THREE
     const line = this._aimLine
     const marker = this._aimMarker
-    if (!THREE || !line || !marker || !this._camera) return
+    const playback = this._playback
+    if (!THREE || !line || !marker) return
 
-    const flying = this._playback?.phase === 'fly'
-    if (!flying || !this._boolAttr('show-aim-line')) {
+    if (playback?.phase !== 'fly' || !this._boolAttr('show-aim-line')) {
       line.visible = false
       marker.visible = false
       return
@@ -1002,10 +1115,11 @@ class CircuitDiagramElement extends HTMLElement {
     // point it along the nose. The drop is along the pilot's "down" (perpendicular
     // to the view), so the line sits clearly below the sightline and reads out
     // ahead to where it meets the ground on descent, rather than collapsing onto
-    // the view axis.
-    const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(this._camera.quaternion)
-    const down = new THREE.Vector3(0, -1, 0).applyQuaternion(this._camera.quaternion)
-    const start = this._camera.position.clone().addScaledVector(down, AIM_LINE_DROP)
+    // the view axis. It follows the aircraft's pose, not the camera's, so it stays
+    // put as the user looks around a paused flight.
+    const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(playback.currentQuaternion)
+    const down = new THREE.Vector3(0, -1, 0).applyQuaternion(playback.currentQuaternion)
+    const start = playback.currentPosition.clone().addScaledVector(down, AIM_LINE_DROP)
 
     let length = AIM_LINE_MAX
     let hitsGround = false
@@ -1515,6 +1629,8 @@ class CircuitDiagramElement extends HTMLElement {
       startPos,
       startQuat,
       up,
+      currentPosition: startPos.clone(),
+      currentQuaternion: startQuat.clone(),
       windToward,
       windRatio,
     }
@@ -1561,12 +1677,14 @@ class CircuitDiagramElement extends HTMLElement {
     if (tangent.lengthSq() < 1e-9) tangent.copy(playback.tangents[segment])
     tangent.normalize()
 
+    playback.currentPosition.copy(position)
     camera.position.copy(position)
     camera.up.copy(playback.up)
     const trackHeight = position.y - FLIGHT_HEIGHT_ABOVE_TRACK
     camera.lookAt(
       position.clone().add(this._crabHeading(tangent, playback.windToward, playback.windRatio, trackHeight))
     )
+    playback.currentQuaternion.copy(camera.quaternion)
   }
 
   /**
@@ -1612,10 +1730,15 @@ class CircuitDiagramElement extends HTMLElement {
     playback.pausedElapsed = performance.now() - playback.phaseStart
 
     if (this._orbitControls && this._camera) {
-      // Pivot the orbit target ahead of the camera so a look-around feels natural.
+      // Pivot just ahead of the camera so dragging looks around from the
+      // aircraft's position. Zoom is disabled: dollying toward a target this
+      // close would stall against it rather than move through the scene.
       const THREE = this._THREE!
       const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(this._camera.quaternion)
-      this._orbitControls.target.copy(this._camera.position).add(forward.multiplyScalar(800))
+      this._orbitControls.target
+        .copy(this._camera.position)
+        .add(forward.multiplyScalar(LOOK_AROUND_PIVOT_DISTANCE))
+      this._orbitControls.enableZoom = false
       this._orbitControls.enabled = true
     }
     this._updatePlayIcons()
@@ -1628,7 +1751,10 @@ class CircuitDiagramElement extends HTMLElement {
     if (!playback || !playback.paused) return
     playback.paused = false
     playback.phaseStart = performance.now() - playback.pausedElapsed
-    if (this._orbitControls) this._orbitControls.enabled = false
+    if (this._orbitControls) {
+      this._orbitControls.enabled = false
+      this._orbitControls.enableZoom = true
+    }
     this._updatePlayIcons()
     if (broadcast) this._broadcastChannel?.postMessage({ type: 'resume-path', index: playback.index })
   }
@@ -1637,7 +1763,10 @@ class CircuitDiagramElement extends HTMLElement {
   private _cancelPlayback() {
     if (!this._playback) return
     this._playback = null
-    if (this._orbitControls) this._orbitControls.enabled = true
+    if (this._orbitControls) {
+      this._orbitControls.enabled = true
+      this._orbitControls.enableZoom = true
+    }
     this._updatePlayIcons()
   }
 
@@ -1702,6 +1831,7 @@ class CircuitDiagramElement extends HTMLElement {
     this._updateAimLine()
     this._renderer!.render(this._scene!, this._camera!)
     this._renderInset()
+    this._renderThresholdView()
   }
 
   private _teardown() {
@@ -1720,6 +1850,7 @@ class CircuitDiagramElement extends HTMLElement {
 
     this._insetCamera = null
     this._insetScene = null
+    this._thresholdCamera = null
 
     this._animFrameId = null
     this._sceneReady = false

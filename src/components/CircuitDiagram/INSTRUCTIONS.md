@@ -97,7 +97,11 @@ but only ~300 m high and would otherwise look flat.
   constant airspeed — see the crab bullet. The flight **loops**
   continuously. The button toggles **pause/resume** (`_pausePlayback()` /
   `_resumePlayback()`): pausing frees OrbitControls so you can look around and
-  resumes from the same spot (`pausedElapsed`); a pointer-down on the canvas also
+  resumes from the same spot (`pausedElapsed`). While paused the orbit target sits
+  `LOOK_AROUND_PIVOT_DISTANCE` (1 unit) ahead of the camera, so dragging turns the
+  view from the aircraft's position rather than swinging around a distant point;
+  zoom is disabled while paused (dollying toward so close a target stalls) and
+  re-enabled on resume/cancel; a pointer-down on the canvas also
   pauses. Segment labels are lifted `LABEL_CLEARANCE_ABOVE_FLIGHT` above the
   flight path so the camera passes underneath them. OrbitControls is disabled
   while flying and re-enabled when paused/idle; `_cancelPlayback()` drops the
@@ -119,7 +123,9 @@ but only ~300 m high and would otherwise look flat.
   cumulative travel time as `timeFractions`; `_positionAtTime()` looks up the
   position by time. With no wind `g = FLIGHT_SPEED` everywhere (unchanged pacing).
 - **Aiming line** — while a flight is in its `fly` phase, `_updateAimLine()` shows
-  a thin dashed tube along the nose (the camera's forward direction). The tube is a
+  a thin dashed tube along the nose. It is driven by the aircraft's pose
+  (`playback.currentPosition` / `currentQuaternion`, set in `_positionAtTime()`),
+  not the camera's, so it stays fixed while the user looks around a paused flight. The tube is a
   unit cylinder (radius `AIM_LINE_RADIUS`) re-oriented/stretched each frame; dashes
   come from a repeating alpha map along its length (tile count set from the length
   so the dash size stays constant in world units), `depthTest: false` so it reads
@@ -142,6 +148,18 @@ but only ~300 m high and would otherwise look flat.
   to show the wind relative to whatever you're looking at while staying legible.
   An HTML frame (`.cd-wind-inset`) draws the border + "WIND" caption over it.
   Gated by `show-wind-indicator`.
+- **Threshold view** — a bottom-left inset showing the landing threshold from the
+  aircraft's position. `_renderThresholdView()` re-renders the *main* scene (no
+  separate scene) with `_thresholdCamera` placed at `playback.currentPosition` and
+  looking at the world origin (the threshold, `x = y = alt = 0`), into a scissor
+  viewport sized by `_thresholdViewBox()`. It uses `currentPosition` — updated in
+  `_positionAtTime()` — rather than the main camera, so it stays put while the
+  user orbits a paused flight. Shown only in the `fly` phase (flying or paused).
+  For that render the path groups (ribbons, curtains, segment labels) and the
+  aiming line are hidden, leaving just the airfield and terrain — paths in the
+  inset confused the picture of the field.
+  The HTML frame reuses the `.cd-wind-inset` chrome with a "THRESHOLD" caption.
+  Gated by `show-threshold-view`.
 - **BroadcastChannel** (`circuit-diagram-sync:<key>`) — syncs camera position,
   per-path visibility toggles, and flythrough play/pause/resume across tabs for
   presenter/slide pairing (remote camera is ignored while actively flying, but
@@ -187,5 +205,6 @@ optional `segment-labels`.
 | `show-legend` | `true` | Show the clickable legend overlay (`false` hides) |
 | `show-aim-line` | `true` | Show the dashed nose-forward aiming line during the flythrough (`false` hides) |
 | `show-wind-indicator` | `true` | Show the mini windsock inset (bottom-right) that tracks the current view (`false` hides) |
+| `show-threshold-view` | `true` | Show the bottom-left inset viewing the landing threshold from the flight position, while a flight is flying or paused (`false` hides) |
 | `sync-group` | — | Explicit cross-tab sync group; instances sharing a value pair up. Unset, identical examples auto-pair via a content hash and different examples stay independent |
 | `show-help` | — | Set to `false` to hide the in-component help (?) link |
