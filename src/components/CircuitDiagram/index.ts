@@ -121,8 +121,15 @@ const THRESHOLD_VIEW_SIZE_FRACTION = 0.3
 const THRESHOLD_VIEW_WIDTH_MIN = 150
 const THRESHOLD_VIEW_WIDTH_MAX = 260
 const THRESHOLD_VIEW_ASPECT = 4 / 3
+/** Hide the threshold view within this horizontal distance (world units) of the
+ * threshold: overhead, "look at the threshold" points straight down and spins. */
+const THRESHOLD_VIEW_MIN_DISTANCE = 150
+/** Render layer for objects the threshold view leaves out (paths, curtains,
+ * labels, aiming line). The main camera sees it; the threshold camera doesn't. */
+const OVERLAY_LAYER = 1
 
 const PLAY_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2.5v11l9-5.5z"/></svg>'
+const STOP_ICON = '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3.5" y="3.5" width="9" height="9" rx="1"/></svg>'
 const PAUSE_ICON =
   '<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="4" y="3" width="3.2" height="10" rx="1"/><rect x="8.8" y="3" width="3.2" height="10" rx="1"/></svg>'
 
@@ -400,12 +407,10 @@ class CircuitDiagramElement extends HTMLElement {
       this._applyGridVisibility()
     } else if (name === 'sky-color') {
       this._applySkyColor()
-    } else if (name === 'show-aim-line') {
+    } else if (name === 'show-aim-line' || name === 'show-threshold-view') {
       // The render loop reads the attribute each frame; nothing to rebuild.
     } else if (name === 'show-wind-indicator') {
       this._applyWindIndicatorVisibility()
-    } else if (name === 'show-threshold-view') {
-      // The render loop reads the attribute each frame; nothing to rebuild.
     } else if (name === 'sync-group') {
       this._refreshBroadcastChannel()
     } else {
@@ -568,6 +573,7 @@ class CircuitDiagramElement extends HTMLElement {
     this._applySkyColor()
 
     this._camera = new THREE.PerspectiveCamera(50, width / height, 1, 50000)
+    this._camera.layers.enable(OVERLAY_LAYER)
     this._thresholdCamera = new THREE.PerspectiveCamera(
       THRESHOLD_VIEW_FOV,
       THRESHOLD_VIEW_ASPECT,
@@ -604,6 +610,7 @@ class CircuitDiagramElement extends HTMLElement {
       this._camera.aspect = newWidth / newHeight
       this._camera.updateProjectionMatrix()
       this._layoutWindInset()
+      this._layoutThresholdView()
     })
     this._resizeObserver.observe(container)
 
@@ -680,6 +687,8 @@ class CircuitDiagramElement extends HTMLElement {
         this._pausePlayback(false)
       } else if (data.type === 'resume-path') {
         this._resumePlayback(false)
+      } else if (data.type === 'stop-path') {
+        this._stopPlayback(false)
       }
     }
   }
@@ -946,25 +955,41 @@ class CircuitDiagramElement extends HTMLElement {
 
     this._updateInsetCamera()
 
-    const height = this._root.clientHeight
     const { size, left, top } = this._insetBox()
-    // setViewport/setScissor use CSS px with origin at the bottom-left.
-    const x = left
-    const y = height - top - size
+    this._renderToViewport(this._insetScene, this._insetCamera, { width: size, height: size, left, top })
+  }
 
+  /** Render a scene into a corner box (CSS px, origin top-left), then restore the
+   * full-canvas viewport. */
+  private _renderToViewport(
+    scene: THREE.Scene,
+    camera: THREE.Camera,
+    box: { width: number; height: number; left: number; top: number }
+  ) {
+    const renderer = this._renderer!
+    const rootHeight = this._root.clientHeight
+    // setViewport/setScissor use CSS px with origin at the bottom-left.
+    const viewportBottom = rootHeight - box.top - box.height
     renderer.setScissorTest(true)
-    renderer.setViewport(x, y, size, size)
-    renderer.setScissor(x, y, size, size)
-    renderer.render(this._insetScene, this._insetCamera)
+    renderer.setViewport(box.left, viewportBottom, box.width, box.height)
+    renderer.setScissor(box.left, viewportBottom, box.width, box.height)
+    renderer.render(scene, camera)
     renderer.setScissorTest(false)
-    renderer.setViewport(0, 0, this._root.clientWidth, height)
+    renderer.setViewport(0, 0, this._root.clientWidth, rootHeight)
   }
 
   // ---- threshold-view inset ----------------------------------------------
 
   /** Bottom-left pixel box of the threshold view (CSS px, origin top-left), kept
-   * clear of the legend (top-left) and the wind inset (bottom-right). */
-  private _thresholdViewBox(): { width: number; height: number; left: number; top: number } {
+   * clear of the legend (top-left) and the wind inset (bottom-right). `fits` is
+   * false when the canvas is too narrow to hold it beside the wind inset. */
+  private _thresholdViewBox(): {
+    width: number
+    height: number
+    left: number
+    top: number
+    fits: boolean
+  } {
     const rootWidth = this._root.clientWidth
     const rootHeight = this._root.clientHeight
     const width = Math.round(
@@ -974,7 +999,20 @@ class CircuitDiagramElement extends HTMLElement {
       )
     )
     const height = Math.round(width / THRESHOLD_VIEW_ASPECT)
-    return { width, height, left: INSET_MARGIN, top: rootHeight - height - INSET_MARGIN }
+    const windInsetLeft = this._windIndicatorOn() ? this._insetBox().left : rootWidth
+    const fits = INSET_MARGIN + width + INSET_MARGIN <= windInsetLeft
+    return { width, height, left: INSET_MARGIN, top: rootHeight - height - INSET_MARGIN, fits }
+  }
+
+  /** Position/size the HTML frame that sits over the threshold viewport. */
+  private _layoutThresholdView() {
+    const frame = this._thresholdViewFrameEl
+    if (!frame) return
+    const { width, height, left, top } = this._thresholdViewBox()
+    frame.style.width = `${width}px`
+    frame.style.height = `${height}px`
+    frame.style.left = `${left}px`
+    frame.style.top = `${top}px`
   }
 
   /**
@@ -982,49 +1020,30 @@ class CircuitDiagramElement extends HTMLElement {
    * (world origin) into the bottom-left corner. Shown whenever a flight is on the
    * track — flying or paused — so a paused flight can be discussed with the
    * threshold in sight regardless of where the main camera has been orbited.
+   * The camera only sees layer 0, so the paths, curtains, labels and aiming line
+   * (on `OVERLAY_LAYER`) are left out: just the airfield and terrain.
    */
   private _renderThresholdView() {
-    const renderer = this._renderer
     const camera = this._thresholdCamera
     const frame = this._thresholdViewFrameEl
-    if (!renderer || !camera || !frame || !this._scene) return
+    if (!this._renderer || !camera || !frame || !this._scene) return
 
     const playback = this._playback
-    const active = playback?.phase === 'fly' && this._boolAttr('show-threshold-view')
+    const box = this._thresholdViewBox()
+    const position = playback?.currentPosition
+    const active =
+      playback?.phase === 'fly' &&
+      this._boolAttr('show-threshold-view') &&
+      box.fits &&
+      Math.hypot(position!.x, position!.z) >= THRESHOLD_VIEW_MIN_DISTANCE
     const display = active ? '' : 'none'
     if (frame.style.display !== display) frame.style.display = display
     if (!active) return
 
-    const { width, height, left, top } = this._thresholdViewBox()
-    frame.style.width = `${width}px`
-    frame.style.height = `${height}px`
-    frame.style.left = `${left}px`
-    frame.style.top = `${top}px`
-
-    camera.position.copy(playback.currentPosition)
+    camera.position.copy(position!)
     camera.up.set(0, 1, 0)
     camera.lookAt(0, 0, 0)
-
-    // Show just the airfield and terrain: the paths (ribbons, curtains, labels)
-    // and the aiming line only clutter the picture of the field from here.
-    const hidden = [
-      ...this._pathObjects.map((objects): THREE.Object3D => objects.group),
-      this._aimLine,
-      this._aimMarker,
-    ].filter((object): object is THREE.Object3D => !!object && object.visible)
-    for (const object of hidden) object.visible = false
-
-    const rootHeight = this._root.clientHeight
-    // setViewport/setScissor use CSS px with origin at the bottom-left.
-    const y = rootHeight - top - height
-    renderer.setScissorTest(true)
-    renderer.setViewport(left, y, width, height)
-    renderer.setScissor(left, y, width, height)
-    renderer.render(this._scene, camera)
-    renderer.setScissorTest(false)
-    renderer.setViewport(0, 0, this._root.clientWidth, rootHeight)
-
-    for (const object of hidden) object.visible = true
+    this._renderToViewport(this._scene, camera, box)
   }
 
   // ---- nose-forward aiming line ------------------------------------------
@@ -1075,6 +1094,7 @@ class CircuitDiagramElement extends HTMLElement {
     })
     const line = new THREE.Mesh(geometry, material)
     line.renderOrder = 11
+    line.layers.set(OVERLAY_LAYER)
     line.visible = false
     line.frustumCulled = false
     this._scene!.add(line)
@@ -1092,6 +1112,7 @@ class CircuitDiagramElement extends HTMLElement {
     )
     marker.rotation.x = -Math.PI / 2
     marker.renderOrder = 11
+    marker.layers.set(OVERLAY_LAYER)
     marker.visible = false
     this._scene!.add(marker)
     this._aimMarker = marker
@@ -1181,6 +1202,7 @@ class CircuitDiagramElement extends HTMLElement {
     for (const path of this._pathsData) {
       if (path.points.length < 2) continue
       const objects = this._buildPath(THREE, path)
+      objects.group.traverse(object => object.layers.set(OVERLAY_LAYER))
       this._pathObjects.push(objects)
     }
   }
@@ -1496,7 +1518,14 @@ class CircuitDiagramElement extends HTMLElement {
         }
       })
 
-      item.append(toggle, play)
+      const stop = document.createElement('button')
+      stop.className = 'cd-legend-stop'
+      stop.type = 'button'
+      stop.title = 'Stop flight and return to the overview'
+      stop.innerHTML = STOP_ICON
+      stop.addEventListener('click', () => this._stopPlayback(true))
+
+      item.append(toggle, play, stop)
       this._legendEl.appendChild(item)
     })
     this._updatePlayIcons()
@@ -1511,6 +1540,10 @@ class CircuitDiagramElement extends HTMLElement {
       button.innerHTML = flying ? PAUSE_ICON : PLAY_ICON
       button.classList.toggle('cd-playing', active)
       button.title = flying ? 'Pause flight' : active ? 'Resume flight' : 'Fly this track'
+    })
+    const stopButtons = this._legendEl.querySelectorAll<HTMLButtonElement>('.cd-legend-stop')
+    stopButtons.forEach((button, index) => {
+      button.hidden = this._playback?.index !== index
     })
   }
 
@@ -1757,6 +1790,14 @@ class CircuitDiagramElement extends HTMLElement {
     }
     this._updatePlayIcons()
     if (broadcast) this._broadcastChannel?.postMessage({ type: 'resume-path', index: playback.index })
+  }
+
+  /** End the flight and return the camera to the overview of the circuit. */
+  private _stopPlayback(broadcast: boolean) {
+    if (!this._playback) return
+    this._cancelPlayback()
+    this._frameCamera()
+    if (broadcast) this._broadcastChannel?.postMessage({ type: 'stop-path' })
   }
 
   /** Abandon any flight without the camera hand-off (used on rebuild/teardown). */

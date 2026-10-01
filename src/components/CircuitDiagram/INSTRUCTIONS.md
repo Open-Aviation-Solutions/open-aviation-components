@@ -86,8 +86,9 @@ but only ~300 m high and would otherwise look flat.
   (direction only); an explicit `wind-speed="0"` hangs limp. The pole is tall
   enough that even a full droop clears the ground.
 - **Legend** — HTML overlay (not WebGL). Each entry has a colour-swatch/label
-  toggle button (toggles that path's group visibility) and a play/pause button
-  that flies the camera along the track (see below). Synced across tabs.
+  toggle button (toggles that path's group visibility), a play/pause button
+  that flies the camera along the track (see below), and a stop button shown only
+  for the active flight. Synced across tabs.
 - **Track flythrough** — the legend play button flies the camera along a track
   for a guided tour. `_startPlayback()` builds the flight from the path's stored
   world centreline raised `FLIGHT_HEIGHT_ABOVE_TRACK` above the ribbon: it eases
@@ -101,7 +102,10 @@ but only ~300 m high and would otherwise look flat.
   `LOOK_AROUND_PIVOT_DISTANCE` (1 unit) ahead of the camera, so dragging turns the
   view from the aircraft's position rather than swinging around a distant point;
   zoom is disabled while paused (dollying toward so close a target stalls) and
-  re-enabled on resume/cancel; a pointer-down on the canvas also
+  re-enabled on resume/cancel. A stop button (shown beside the active flight's
+  play/pause) calls `_stopPlayback()`, which ends the flight and reframes the
+  overview (`_frameCamera()`) — the only way back out, since a paused flight can't
+  zoom; a pointer-down on the canvas also
   pauses. Segment labels are lifted `LABEL_CLEARANCE_ABOVE_FLIGHT` above the
   flight path so the camera passes underneath them. OrbitControls is disabled
   while flying and re-enabled when paused/idle; `_cancelPlayback()` drops the
@@ -155,9 +159,14 @@ but only ~300 m high and would otherwise look flat.
   viewport sized by `_thresholdViewBox()`. It uses `currentPosition` — updated in
   `_positionAtTime()` — rather than the main camera, so it stays put while the
   user orbits a paused flight. Shown only in the `fly` phase (flying or paused).
-  For that render the path groups (ribbons, curtains, segment labels) and the
-  aiming line are hidden, leaving just the airfield and terrain — paths in the
-  inset confused the picture of the field.
+  The path groups (ribbons, curtains, segment labels) and the aiming line live on
+  `OVERLAY_LAYER`, which the main camera enables and `_thresholdCamera` doesn't,
+  so the inset shows just the airfield and terrain — paths in the inset confused
+  the picture of the field. Anything new that should stay out of the inset goes on
+  that layer too. The inset is hidden within `THRESHOLD_VIEW_MIN_DISTANCE` of the
+  threshold (overhead, looking at it points straight down and spins) and when the
+  canvas is too narrow to fit it beside the wind inset. The frame is laid out on
+  resize (`_layoutThresholdView()`).
   The HTML frame reuses the `.cd-wind-inset` chrome with a "THRESHOLD" caption.
   Gated by `show-threshold-view`.
 - **BroadcastChannel** (`circuit-diagram-sync:<key>`) — syncs camera position,

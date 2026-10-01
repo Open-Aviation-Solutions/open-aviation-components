@@ -127,7 +127,8 @@
   background: rgba(255, 255, 255, 0.08);
 }
 
-.cd-legend-play {
+.cd-legend-play,
+.cd-legend-stop {
   flex: none;
   display: flex;
   align-items: center;
@@ -143,7 +144,8 @@
   transition: background 0.15s, color 0.15s;
 }
 
-.cd-legend-play:hover {
+.cd-legend-play:hover,
+.cd-legend-stop:hover {
   background: rgba(255, 255, 255, 0.12);
   color: #e2e8f0;
 }
@@ -152,11 +154,16 @@
   color: #38bdf8;
 }
 
-.cd-legend-play svg {
+.cd-legend-play svg,
+.cd-legend-stop svg {
   width: 11px;
   height: 11px;
   fill: currentColor;
   display: block;
+}
+
+.cd-legend-stop[hidden] {
+  display: none;
 }
 
 .cd-legend-off {
