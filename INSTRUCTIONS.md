@@ -66,6 +66,19 @@ record it so future changes don't quietly break the pedagogy:
 
 `astro.config.mjs` sets `base: '/open-aviation-components'` and `outDir: './dist'`. The `dist/` output of `npm run build` is deployed to GitHub Pages by the existing `deploy.yml` workflow without modification. Static assets (e.g. `aircraft.glb`) go in `docs/public/` and are served at `/open-aviation-components/<filename>`.
 
+## Releasing
+
+The library is published to npm as `@open-aviation-solutions/components`.
+
+1. Bump the patch version in the feature PR (`npm version patch --no-git-tag-version`,
+   committed as `Bump version to X.Y.Z`) and merge it.
+2. Tag the merge commit on `main` as `vX.Y.Z` (a plain tag) and push the tag.
+   Pushing a `v*` tag runs `.github/workflows/publish.yml`, which type-checks,
+   builds the library and runs `npm publish`.
+3. npm can take a few minutes to list the new version after the workflow succeeds.
+
+GitHub Releases are not used — the tag is the release.
+
 ## Discoverability and social cards
 
 This docs site is one of several that share a single GitHub Pages origin,
