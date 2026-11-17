@@ -152,7 +152,7 @@ interface ChartArea {
 }
 
 export class ClimbPerformanceElement extends HTMLElement {
-  static observedAttributes = ['height', 'vs', 'cruise-kts', 'show-help', 'vztp']
+  static observedAttributes = ['height', 'vs', 'cruise-kts', 'show-help', 'vztp', 'show-slope-value']
 
   private _helpLinkEl!: HTMLAnchorElement
   private _canvas: HTMLCanvasElement
@@ -168,6 +168,7 @@ export class ClimbPerformanceElement extends HTMLElement {
   private _io: IntersectionObserver | null = null
   private _vsKts: number | null = 45
   private _cruiseKts: number | null = 145
+  private _showSlopeValue = false
 
   constructor() {
     super()
@@ -232,6 +233,7 @@ export class ClimbPerformanceElement extends HTMLElement {
     if (name === 'vs') this._vsKts = value === null ? 45 : (value ? parseFloat(value) : null)
     if (name === 'cruise-kts') this._cruiseKts = value === null ? 145 : (value ? parseFloat(value) : null)
     if (name === 'show-help') this._helpLinkEl.style.display = value === 'false' ? 'none' : ''
+    if (name === 'show-slope-value') this._showSlopeValue = value !== null && value !== 'false'
     if (name === 'vztp') {
       const parsed = value ? parseFloat(value) : DEFAULT_VZTP
       // vztp must exceed VMAX_NORM, else thrust would go non-positive within the chart.
@@ -735,7 +737,9 @@ export class ClimbPerformanceElement extends HTMLElement {
         ],
         // The origin line's slope, PR/v. Since PR = D·v it is the drag at v, the
         // same number as the thrust chart's Reqd.
-        readouts: [{ val: powerRequired(v) / v, color: originLineClr, label: 'Slope P/v' }],
+        readouts: this._showSlopeValue
+          ? [{ val: powerRequired(v) / v, color: originLineClr, label: 'Slope P/v' }]
+          : [],
       },
     ]) {
       const cursorX = this._vToX(v, area)

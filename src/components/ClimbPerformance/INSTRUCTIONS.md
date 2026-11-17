@@ -27,7 +27,7 @@ other speed. With the cursor at Vmd that solid line lies on the tangent and is d
 slate. Snapping picks the nearest
 key speed, so Vmd can be selected even when Vy sits within the snap distance of it.
 
-The power chart's cursor readout includes `Slope P/v`, the line's slope, computed as
+With the `show-slope-value` attribute set, the power chart's cursor readout includes `Slope P/v`, the line's slope, computed as
 `powerRequired(v) / v`. In the normalised units that equals `thrustRequired(v)`, so it is the
 same number as the left chart's `Reqd`: slope on the right equals height on the left.
 `index.test.ts` checks the identity `powerRequired(v) / v = thrustRequired(v)` across the speed
@@ -93,7 +93,7 @@ The cursor stays between VS and Vmax, though the axis starts at 0.
 
 At the cursor position:
 - Dots are drawn on all four curves (TA, TR, PA, PR) with value labels
-- The power chart's origin line is drawn to the PR curve, with its `Slope P/v` beneath the labels
+- The power chart's origin line is drawn to the PR curve, with its `Slope P/v` beneath the labels when `show-slope-value` is set
 - An excess/deficit percentage is shown in the gap between available and required curves
 
 ## Attributes
@@ -104,6 +104,10 @@ At the cursor position:
 - `vztp` — normalised prop zero-thrust speed; tunes the Vy–Vmd relationship (see the physics
   model above). Defaults to `3.30` (Vy ≈ Vmd). Try `3.6` (C152/C172) or `3.0` (PA-28). Values
   ≤ `VMAX_NORM` (1.5) or non-numeric are ignored and fall back to the default.
+- `show-slope-value` — shows the power chart's `Slope P/v` readout. Off by default: shown when the
+  attribute is present (`show-slope-value` or `show-slope-value="true"`), hidden when it is absent
+  or `"false"`. The readout helps a CPL learner but would confuse an RPL one. The origin line and
+  the Vmd tangent are drawn either way.
 
 ## No Three.js dependency
 
