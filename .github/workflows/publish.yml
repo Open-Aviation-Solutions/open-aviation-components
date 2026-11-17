@@ -1,17 +1,61 @@
 name: Publish to npm
 
+# Merging a pull request that changes package.json's `version` releases that
+# version: published to npm, then tagged `v<version>`. Only a push to `main`
+# runs this, and `main` changes only through a pull request with CI passing,
+# so nothing on another branch, and no tag pushed by hand, can release.
+#
+# The file keeps its name, publish.yml, because npm's trusted publisher for the
+# package names the workflow file.
 on:
   push:
-    tags:
-      - 'v*'
+    branches: [main]
 
-permissions:
-  id-token: write  # Required for OIDC
-  contents: read
+# One release at a time. GitHub keeps only the newest waiting run, so of two
+# bumps merged while a release is running, only the later is published.
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
-  publish:
+  version:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      published: ${{ steps.version.outputs.published }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Is package.json's version on npm yet?
+        id: version
+        run: |
+          version=$(jq -r .version package.json)
+          status=$(curl -s -o /dev/null -w '%{http_code}' --retry 3 --retry-all-errors --max-time 30 \
+            "https://registry.npmjs.org/@open-aviation-solutions%2fcomponents/$version")
+          case "$status" in
+            200) published=true ;;
+            404) published=false ;;
+            *) echo "npm answered $status for version $version."; exit 1 ;;
+          esac
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "published=$published" >> "$GITHUB_OUTPUT"
+          echo "Version $version, on npm: $published."
+
+  publish:
+    needs: version
+    if: needs.version.outputs.published == 'false'
+    runs-on: ubuntu-latest
+    # GitHub runs this job only on the refs the `release` environment allows
+    # (`main`), and npm's trusted publisher is to accept only this environment.
+    environment: release
+    permissions:
+      # To push the version's tag.
+      contents: write
+      # For npm's trusted publishing, which exchanges this job's OIDC token
+      # for a short-lived publishing token: no secret is stored.
+      id-token: write
     steps:
       - uses: actions/checkout@v6
 
@@ -23,8 +67,14 @@ jobs:
 
       - run: npm ci
 
-      - run: npm run typecheck
-
-      - run: npm run build:lib
+      # Type-checks, tests, and builds the site and the library.
+      - run: make check
 
       - run: npm publish --access public
+
+      - name: Tag the release
+        env:
+          TAG: v${{ needs.version.outputs.version }}
+        run: |
+          git tag "$TAG" "$GITHUB_SHA"
+          git push origin "$TAG"
