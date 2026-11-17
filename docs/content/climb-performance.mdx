@@ -24,6 +24,7 @@ At each cursor position:
 - **Green fill** shows the excess — thrust or power beyond what level flight needs
 - **Labels on each curve** show the exact values at that speed
 - **Percentage** shows how much excess or deficit exists between available and required
+- **A line from the origin** on the power chart runs to the power-required curve. Its slope, read out as **Slope P/v** when the `show-slope-value` attribute is set (as it is here), is the drag at that speed, the same number as **Reqd** on the thrust chart. The shallowest such line just touches the curve at the minimum drag speed (Vmd, best glide). It is always shown, dashed in slate, so every other line is visibly steeper
 
 The two markers indicate the best climb speeds:
 - **Vx (sky blue)** — best angle of climb: maximum excess thrust, giving the most height gained per distance travelled
@@ -82,6 +83,7 @@ The charts use a normalised speed scale rather than knots, so they represent the
 | `cruise-kts` | — | Speed at the right edge of the chart (Vmax = 1.5 × Vmd). Used with `vs` to calibrate kts axis labels |
 | `vztp` | `3.3` | Prop zero-thrust speed (normalised). Tunes where Vy falls relative to Vmd: `3.3` places Vy ≈ Vmd (best glide), matching typical piston POH data. Use `3.6` for a Cessna 152/172 feel (Vy just above Vmd) or `3.0` for a Piper PA-28 feel (Vy just below Vmd) |
 | `show-help` | — | Set to `"false"` to hide the in-component help (?) link |
+| `show-slope-value` | off | Set (`show-slope-value` or `"true"`) to show the power chart's **Slope P/v** readout. Off by default: useful for CPL theory, but more than an RPL learner needs |
 
 ## Installation
 

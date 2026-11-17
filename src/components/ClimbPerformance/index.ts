@@ -36,18 +36,19 @@ sheet.replaceSync(styles)
 //   vztp = 3.6  → Vy a couple of knots above Vmd  (Cessna 152/172 pattern)
 //   vztp = 3.3  → Vy ≈ Vmd                          (default)
 //   vztp = 3.0  → Vy a couple of knots below Vmd   (Piper PA-28 pattern)
-const VS_NORM   = 0.50
-const VMAX_NORM = 1.50
+export const VS_NORM   = 0.50
+export const VMAX_NORM = 1.50
+const VMD_NORM  = 1.00   // minimum drag speed, by definition of the normalisation
 const DEFAULT_VZTP = 3.30
 const TA_MAX    = 0.5 * (VS_NORM * VS_NORM + 1 / (VS_NORM * VS_NORM))  // = 2.125
 
 const N_SAMPLES = 300
 
 // ── VZTP-independent physics ───────────────────────────────────────────────────
-function thrustRequired(v: number): number {
+export function thrustRequired(v: number): number {
   return 0.5 * (v * v + 1 / (v * v))
 }
-function powerRequired(v: number): number {
+export function powerRequired(v: number): number {
   return thrustRequired(v) * v
 }
 
@@ -141,13 +142,17 @@ const CLR_VMD     = '#64748b'
 const CLR_STRIP   = 'rgba(22,163,74,0.85)'  // excess curve line on the strip
 
 const SNAP_THRESH = 0.025
+// Above this speed the cursor's value labels are drawn to the cursor's left, so
+// they stay inside the chart; below it (Vx, Vy and Vmd) they are drawn to its
+// right, unless the chart is too narrow for them there.
+const LABEL_FLIP_V = 1.15
 
 interface ChartArea {
   x: number; y: number; w: number; h: number
 }
 
 export class ClimbPerformanceElement extends HTMLElement {
-  static observedAttributes = ['height', 'vs', 'cruise-kts', 'show-help', 'vztp']
+  static observedAttributes = ['height', 'vs', 'cruise-kts', 'show-help', 'vztp', 'show-slope-value']
 
   private _helpLinkEl!: HTMLAnchorElement
   private _canvas: HTMLCanvasElement
@@ -163,6 +168,7 @@ export class ClimbPerformanceElement extends HTMLElement {
   private _io: IntersectionObserver | null = null
   private _vsKts: number | null = 45
   private _cruiseKts: number | null = 145
+  private _showSlopeValue = false
 
   constructor() {
     super()
@@ -227,6 +233,7 @@ export class ClimbPerformanceElement extends HTMLElement {
     if (name === 'vs') this._vsKts = value === null ? 45 : (value ? parseFloat(value) : null)
     if (name === 'cruise-kts') this._cruiseKts = value === null ? 145 : (value ? parseFloat(value) : null)
     if (name === 'show-help') this._helpLinkEl.style.display = value === 'false' ? 'none' : ''
+    if (name === 'show-slope-value') this._showSlopeValue = value !== null && value !== 'false'
     if (name === 'vztp') {
       const parsed = value ? parseFloat(value) : DEFAULT_VZTP
       // vztp must exceed VMAX_NORM, else thrust would go non-positive within the chart.
@@ -248,12 +255,16 @@ export class ClimbPerformanceElement extends HTMLElement {
     const { left, right } = this._areas()
     const midX = left.x + left.w + (CHART_GAP + MR) / 2
     const area = canvasX < midX ? left : right
-    let v = VS_NORM + (canvasX - area.x) / area.w * (VMAX_NORM - VS_NORM)
+    let v = (canvasX - area.x) / area.w * VMAX_NORM
     v = Math.max(VS_NORM, Math.min(VMAX_NORM, v))
-    const snapV = [VS_NORM, this._model.vx, this._model.vy, 1.0, VMAX_NORM]
-    for (const sv of snapV) {
-      if (Math.abs(v - sv) < SNAP_THRESH) { v = sv; break }
+    // Snap to the nearest key speed in range, so Vmd stays reachable when Vy sits
+    // within the snap distance of it (the default vztp puts Vy at about 0.998).
+    const snapTargets = [VS_NORM, this._model.vx, this._model.vy, VMD_NORM, VMAX_NORM]
+    let nearest = v, nearestDistance = SNAP_THRESH
+    for (const target of snapTargets) {
+      if (Math.abs(v - target) < nearestDistance) { nearest = target; nearestDistance = Math.abs(v - target) }
     }
+    v = nearest
     this._cursorV = v
     this._dirty = true
   }
@@ -275,13 +286,17 @@ export class ClimbPerformanceElement extends HTMLElement {
     if (this._dragging && event.touches[0]) this._updateCursor(this._canvasX(event.touches[0].clientX))
   }
   private _onKeyDown = (event: KeyboardEvent) => {
-    if (event.key === 'ArrowLeft') {
-      event.preventDefault()
-      this._cursorV = Math.max(VS_NORM, this._cursorV - 0.02); this._dirty = true
-    } else if (event.key === 'ArrowRight') {
-      event.preventDefault()
-      this._cursorV = Math.min(VMAX_NORM, this._cursorV + 0.02); this._dirty = true
-    }
+    const direction = event.key === 'ArrowLeft' ? -1 : event.key === 'ArrowRight' ? 1 : 0
+    if (!direction) return
+    event.preventDefault()
+    const from = this._cursorV
+    const next = Math.max(VS_NORM, Math.min(VMAX_NORM, from + direction * 0.02))
+    // A step that would pass Vx, Vy or Vmd stops on the first of them instead, so
+    // the keys reach the key speeds (VS and Vmax are reached by the clamp).
+    const passed = [this._model.vx, this._model.vy, VMD_NORM]
+      .filter(target => (target - from) * direction > 1e-9 && (next - target) * direction >= 0)
+    this._cursorV = passed.length ? (direction > 0 ? Math.min(...passed) : Math.max(...passed)) : next
+    this._dirty = true
   }
 
   private _areas(): { left: ChartArea; right: ChartArea } {
@@ -298,8 +313,10 @@ export class ClimbPerformanceElement extends HTMLElement {
     return { x: mainArea.x, y: mainArea.y + mainArea.h + STRIP_GAP, w: mainArea.w, h: EXCESS_H }
   }
 
+  // The x-axis runs from v = 0 so the origin is on the chart (the power chart's
+  // origin line needs it); the curves are drawn only from VS to VMAX.
   private _vToX(v: number, area: ChartArea): number {
-    return area.x + (v - VS_NORM) / (VMAX_NORM - VS_NORM) * area.w
+    return area.x + v / VMAX_NORM * area.w
   }
   private _valToY(val: number, area: ChartArea, yMax: number): number {
     return area.y + area.h * (1 - val / yMax)
@@ -408,7 +425,7 @@ export class ClimbPerformanceElement extends HTMLElement {
     const speedMarkers = [
       { v: this._model.vx, color: CLR_VX,  lw: 1.5, label: 'Vx'  },
       { v: this._model.vy, color: CLR_VY,  lw: 1.5, label: 'Vy'  },
-      { v: 1.0,            color: CLR_VMD, lw: 1.0, label: 'Vmd' },
+      { v: VMD_NORM,       color: CLR_VMD, lw: 1.0, label: 'Vmd' },
     ].sort((a, b) => a.v - b.v)
     for (const { v, color, lw } of speedMarkers) {
       const px = this._vToX(v, area)
@@ -429,6 +446,21 @@ export class ClimbPerformanceElement extends HTMLElement {
       ctx.font = (lw > 1 ? 'bold ' : '') + '13px system-ui,sans-serif'
       ctx.fillText(label, markerLabelXs[i], area.y + 7)
     })
+
+    // Vmd tangent (power chart only): the line from the origin that just touches
+    // the power-required curve, dashed and light and carried on across the chart,
+    // as a reference against which the origin line at any other speed is steeper.
+    if (!isThrust) {
+      const tangentSlope = powerRequired(VMD_NORM) / VMD_NORM
+      ctx.save()
+      ctx.setLineDash([6, 4]); ctx.globalAlpha = 0.6
+      ctx.strokeStyle = CLR_VMD; ctx.lineWidth = 1
+      ctx.beginPath()
+      ctx.moveTo(this._vToX(0, area), this._valToY(0, area, yMax))
+      ctx.lineTo(this._vToX(VMAX_NORM, area), this._valToY(tangentSlope * VMAX_NORM, area, yMax))
+      ctx.stroke()
+      ctx.restore()
+    }
 
     // Required curve — dashed red
     ctx.beginPath()
@@ -458,7 +490,8 @@ export class ClimbPerformanceElement extends HTMLElement {
     for (let yv = 0; yv <= yMax + 0.01; yv += yStep) {
       const py = this._valToY(yv, area, yMax)
       ctx.beginPath(); ctx.moveTo(area.x - 5, py); ctx.lineTo(area.x, py); ctx.stroke()
-      if (yv > 0.01) ctx.fillText(yv.toFixed(1), area.x - 8, py)
+      // 0 is labelled too: the origin, where the power chart's origin line starts.
+      ctx.fillText(yv > 0.01 ? yv.toFixed(1) : '0', area.x - 8, py)
     }
 
     ctx.save()
@@ -475,7 +508,7 @@ export class ClimbPerformanceElement extends HTMLElement {
       { v: VS_NORM,        label: 'VS',  color: '#94a3b8', bold: false },
       { v: this._model.vx, label: 'Vx',  color: CLR_VX,   bold: true  },
       { v: this._model.vy, label: 'Vy',  color: CLR_VY,   bold: true  },
-      { v: 1.0,            label: 'Vmd', color: CLR_VMD,  bold: false },
+      { v: VMD_NORM,       label: 'Vmd', color: CLR_VMD,  bold: false },
     ].sort((a, b) => a.v - b.v)
     const labelBaseY = area.y + area.h + STRIP_SKIP
     const showKts = this._vsKts !== null && this._cruiseKts !== null
@@ -537,6 +570,14 @@ export class ClimbPerformanceElement extends HTMLElement {
     ctx.fillText(isThrust ? 'Thrust Required (= Drag)' : 'Power Required', legendX + swatchLen + 5, legendY2)
   }
 
+  // Straight line from the origin to the power-required curve at `speed`.
+  private _strokeOriginLine(ctx: CanvasRenderingContext2D, area: ChartArea, yMax: number, speed: number) {
+    ctx.beginPath()
+    ctx.moveTo(this._vToX(0, area), this._valToY(0, area, yMax))
+    ctx.lineTo(this._vToX(speed, area), this._valToY(powerRequired(speed), area, yMax))
+    ctx.stroke()
+  }
+
   private _drawExcessStrip(
     ctx: CanvasRenderingContext2D,
     area: ChartArea,
@@ -570,7 +611,7 @@ export class ClimbPerformanceElement extends HTMLElement {
     const speedMarkers = [
       { v: this._model.vx, color: CLR_VX,  lw: 1.5 },
       { v: this._model.vy, color: CLR_VY,  lw: 1.5 },
-      { v: 1.0,            color: CLR_VMD, lw: 1.0 },
+      { v: VMD_NORM,       color: CLR_VMD, lw: 1.0 },
     ]
     for (const { v, color, lw } of speedMarkers) {
       const px = this._vToX(v, area)
@@ -665,13 +706,28 @@ export class ClimbPerformanceElement extends HTMLElement {
     yMaxT: number, yMaxP: number
   ) {
     const v = this._cursorV
-    for (const { area, yMax, pts } of [
+    const atVmd = Math.abs(v - VMD_NORM) < 1e-6
+    const originLineClr = atVmd ? CLR_VMD : CLR_CURSOR
+
+    // Origin line on the power chart. Its slope (PR/v) is the drag at v, read out
+    // as `Slope P/v`; at Vmd it lies on the dashed tangent and is drawn heavier in
+    // the Vmd colour.
+    ctx.save()
+    ctx.beginPath(); ctx.rect(right.x, right.y, right.w, right.h); ctx.clip()
+    ctx.strokeStyle = originLineClr
+    ctx.lineWidth = atVmd ? 2 : 1
+    if (!atVmd) ctx.globalAlpha = 0.7
+    this._strokeOriginLine(ctx, right, yMaxP, v)
+    ctx.restore()
+
+    for (const { area, yMax, pts, readouts } of [
       {
         area: left, yMax: yMaxT,
         pts: [
           { val: this._model.thrustAvailable(v), color: CLR_AVAIL, label: 'Avail' },
           { val: thrustRequired(v),  color: CLR_REQ,   label: 'Reqd'  },
         ],
+        readouts: [],
       },
       {
         area: right, yMax: yMaxP,
@@ -679,6 +735,11 @@ export class ClimbPerformanceElement extends HTMLElement {
           { val: this._model.powerAvailable(v), color: CLR_AVAIL, label: 'Avail' },
           { val: powerRequired(v),  color: CLR_REQ,   label: 'Reqd'  },
         ],
+        // The origin line's slope, PR/v. Since PR = D·v it is the drag at v, the
+        // same number as the thrust chart's Reqd.
+        readouts: this._showSlopeValue
+          ? [{ val: powerRequired(v) / v, color: originLineClr, label: 'Slope P/v' }]
+          : [],
       },
     ]) {
       const cursorX = this._vToX(v, area)
@@ -699,7 +760,7 @@ export class ClimbPerformanceElement extends HTMLElement {
       ctx.fillStyle = CLR_CURSOR; ctx.textAlign = 'left'; ctx.textBaseline = 'top'
       ctx.fillText(speedLabel, labelLeft, labelTop)
 
-      this._drawCursorDots(ctx, cursorX, area, yMax, pts)
+      this._drawCursorDots(ctx, cursorX, area, yMax, pts, readouts)
       this._drawExcess(ctx, cursorX, area, yMax, v, area === left ? 'thrust' : 'power')
     }
   }
@@ -707,25 +768,47 @@ export class ClimbPerformanceElement extends HTMLElement {
   private _drawCursorDots(
     ctx: CanvasRenderingContext2D,
     cursorX: number, area: ChartArea, yMax: number,
-    points: Array<{ val: number; color: string; label: string }>
+    points: Array<{ val: number; color: string; label: string }>,
+    readouts: Array<{ val: number; color: string; label: string }>
   ) {
-    const onLeft = cursorX > area.x + area.w * 0.65
     const sorted = [...points].sort((a, b) => b.val - a.val)
+    ctx.font = 'bold 13px system-ui,sans-serif'
+    ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
+    // The dot labels go to the cursor's left past LABEL_FLIP_V, or sooner where
+    // they would run past the chart's right margin.
+    const rightLimit = area.x + area.w + MR - 4
+    const widestDotLabel = Math.max(...points.map(({ val, label }) => ctx.measureText(`${label}: ${val.toFixed(2)}`).width))
+    const onLeft = cursorX > this._vToX(LABEL_FLIP_V, area) || cursorX + 10 + widestDotLabel > rightLimit
+    const labelX = onLeft ? cursorX - 10 : cursorX + 10
+    // Left edge for a label: beside the cursor, moved left where it would still run
+    // past the right margin (a readout can be longer than the dot labels).
+    const labelLeft = (width: number) => onLeft ? labelX - width : Math.min(labelX, rightLimit - width)
     let yOffset = 0
+    let lastLabelY = area.y + 8 - 16
     for (const { val, color, label } of sorted) {
       const dotY = this._valToY(val, area, yMax)
       if (dotY < area.y - 4 || dotY > area.y + area.h + 4) continue
       ctx.beginPath(); ctx.arc(cursorX, dotY, 5, 0, Math.PI * 2)
       ctx.fillStyle = color; ctx.fill()
       ctx.strokeStyle = BG; ctx.lineWidth = 1.5; ctx.stroke()
-      const text = `${label}: ${val.toFixed(2)}`
-      const labelX = onLeft ? cursorX - 10 : cursorX + 10
       const labelY = Math.max(area.y + 8, Math.min(area.y + area.h - 8, dotY + yOffset))
-      ctx.font = 'bold 13px system-ui,sans-serif'
+      const text = `${label}: ${val.toFixed(2)}`
       ctx.fillStyle = color
-      ctx.textAlign = onLeft ? 'right' : 'left'; ctx.textBaseline = 'middle'
-      ctx.fillText(text, labelX, labelY)
+      ctx.fillText(text, labelLeft(ctx.measureText(text).width), labelY)
+      lastLabelY = labelY
       yOffset += 16
+    }
+    // Readouts with no point on this chart (the origin line's slope) stack
+    // beneath the last dot label, on a background, since being the longest text
+    // they are the likeliest to be moved left across the cursor's lines.
+    for (const { val, color, label } of readouts) {
+      lastLabelY = Math.min(area.y + area.h - 8, lastLabelY + 16)
+      const text = `${label}: ${val.toFixed(2)}`
+      const width = ctx.measureText(text).width
+      const left = labelLeft(width)
+      ctx.fillStyle = BG; ctx.fillRect(left - 2, lastLabelY - 8, width + 4, 16)
+      ctx.fillStyle = color
+      ctx.fillText(text, left, lastLabelY)
     }
   }
 
@@ -743,11 +826,13 @@ export class ClimbPerformanceElement extends HTMLElement {
     const pct = Math.abs(Math.round(excess / req * 100))
     const isExcess = excess > 0
     const midY = (yAvail + yReq) / 2
-    const onRight = cursorX < area.x + area.w * 0.65
+    const onRight = cursorX < this._vToX(LABEL_FLIP_V, area)
     ctx.font = '13px system-ui,sans-serif'; ctx.textBaseline = 'middle'
-    ctx.textAlign = onRight ? 'left' : 'right'
+    const text = isExcess ? `+${pct}%` : `−${pct}%`
+    const width = ctx.measureText(text).width
+    ctx.textAlign = 'left'
     ctx.fillStyle = isExcess ? 'rgba(34,197,94,0.9)' : 'rgba(239,68,68,0.85)'
-    ctx.fillText(isExcess ? `+${pct}%` : `−${pct}%`, onRight ? cursorX + 8 : cursorX - 8, midY)
+    ctx.fillText(text, onRight ? Math.min(cursorX + 8, area.x + area.w + MR - 4 - width) : cursorX - 8 - width, midY)
   }
 
   private _speedLabel(v: number): string {
