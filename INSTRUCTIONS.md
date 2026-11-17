@@ -10,9 +10,11 @@ npm run build       # Build docs site to dist/ (Astro)
 npm run preview     # Preview production build locally
 npm run build:lib   # Build library to dist/lib/ (Vite — unchanged)
 npm run typecheck   # Type-check library source (src/ only)
+npm test            # Run the tests (Vitest)
+make check          # Type-check, build the site and library, and run the tests, as CI does
 ```
 
-No test or lint commands are configured.
+No lint command is configured.
 
 ## Code style
 
@@ -80,8 +82,11 @@ nothing runs on them. npm can take a few minutes to list the new version after
 the workflow succeeds.
 
 Only `main` can release. The publishing job runs in the `release` environment,
-which GitHub allows only on `main`; `main` changes only through a pull request
-with CI passing.
+which GitHub allows only on `main`, and npm's trusted publisher accepts only that
+environment; `main` changes only through a pull request with CI passing.
+
+Of two version bumps merged while a release is running, only the later is
+published: GitHub keeps only the newest waiting run.
 
 GitHub Releases are not used — the tag is the release.
 
