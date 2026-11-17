@@ -11,6 +11,24 @@ Two side-by-side 2D canvas charts with a shared draggable cursor:
 
 Both charts also show the Vy marker (purple) and the Vx marker (sky blue) for cross-chart comparison, plus Vmd (slate) at v = 1.0.
 
+Both x-axes run from v = 0, so the origin is on the chart; the curves are drawn only from the
+stall speed to VMAX, leaving the axis left of VS empty. The origin is labelled `0` with no kt value
+(the kt mapping below does not in general reach 0 kt at v = 0), and only where it clears the VS
+label.
+
+### The origin line and Vmd
+
+The power chart draws a straight line from the origin to the power-required curve at the cursor
+speed. Because `PR = D·v`, that line's slope `PR/v` is the drag at that speed, so the shallowest
+such line, the tangent, touches the curve at Vmd, the bottom of the drag curve on the left chart.
+The tangent stays drawn (slate) as a reference, so the line at any other speed is visibly
+steeper; with the cursor at Vmd the two coincide and the line is drawn heavier in slate.
+
+The power chart's cursor readout includes `Slope P/v`, the line's slope (`originLineSlope(v)`).
+In the normalised units it equals `thrustRequired(v)`, so it is the same number as the left
+chart's `Reqd`: slope on the right equals height on the left. `index.test.ts` asserts this across
+the speed range, so the readout cannot drift from the drag value.
+
 ## Physics model
 
 Normalised: Vmd = 1.0 by definition. All speeds are ratios relative to min-drag speed.
@@ -30,7 +48,7 @@ stall edge of the chart, contradicting the "below stall it disappears entirely" 
 in the docs, and was corrected to the TA=TR-at-VS calibration below.)
 
 Key normalised speeds (constants and solvers live at the top of `index.ts`):
-- `VS_NORM = 0.50` — stall (chart left edge)
+- `VS_NORM = 0.50` — stall (left end of the curves; the axis itself starts at 0)
 - `VMAX_NORM = 1.50` — chart right edge
 - `Vmd = 1.0` — minimum drag / best-glide speed, the minimum of the drag (TR) curve
 - `vx`, `vy` — solved per-plane by Newton's method inside `buildModel()`, since both depend
@@ -66,8 +84,11 @@ at construction and again whenever the `vztp` attribute changes.
 
 The cursor (`_cursorV`) is a normalised speed value dragged by mouse or touch across both charts simultaneously. Magnetic snap kicks in within `SNAP_THRESH = 0.025` of VS, Vx, Vy, Vmd, and Vmax. Arrow keys move the cursor by 0.02 per step when the element is focused.
 
+The cursor stays between VS and Vmax, though the axis starts at 0.
+
 At the cursor position:
 - Dots are drawn on all four curves (TA, TR, PA, PR) with value labels
+- The power chart's origin line is drawn to the PR curve, with its `Slope P/v` beneath the labels
 - An excess/deficit percentage is shown in the gap between available and required curves
 
 ## Attributes
