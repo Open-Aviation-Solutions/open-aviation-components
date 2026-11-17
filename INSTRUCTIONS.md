@@ -10,9 +10,11 @@ npm run build       # Build docs site to dist/ (Astro)
 npm run preview     # Preview production build locally
 npm run build:lib   # Build library to dist/lib/ (Vite — unchanged)
 npm run typecheck   # Type-check library source (src/ only)
+npm test            # Run the tests (Vitest)
+make check          # Type-check, build the site and library, and run the tests, as CI does
 ```
 
-No test or lint commands are configured.
+No lint command is configured.
 
 ## Code style
 
@@ -70,12 +72,21 @@ record it so future changes don't quietly break the pedagogy:
 
 The library is published to npm as `@open-aviation-solutions/components`.
 
-1. Bump the patch version in the feature PR (`npm version patch --no-git-tag-version`,
-   committed as `Bump version to X.Y.Z`) and merge it.
-2. Tag the merge commit on `main` as `vX.Y.Z` (a plain tag) and push the tag.
-   Pushing a `v*` tag runs `.github/workflows/publish.yml`, which type-checks,
-   builds the library and runs `npm publish`.
-3. npm can take a few minutes to list the new version after the workflow succeeds.
+Bump the patch version in the feature PR (`npm version patch --no-git-tag-version`,
+committed as `Bump version to X.Y.Z`) and merge it: that is the release. On each
+push to `main`, `.github/workflows/publish.yml` asks npm whether `package.json`'s
+version is there yet. When it is not, it runs `make check`, builds the library,
+publishes it through npm's trusted publishing (no npm token is kept in the
+repository), and tags the commit `vX.Y.Z`. Don't push version tags by hand:
+nothing runs on them. npm can take a few minutes to list the new version after
+the workflow succeeds.
+
+Only `main` can release. The publishing job runs in the `release` environment,
+which GitHub allows only on `main`, and npm's trusted publisher accepts only that
+environment; `main` changes only through a pull request with CI passing.
+
+Of two version bumps merged while a release is running, only the later is
+published: GitHub keeps only the newest waiting run.
 
 GitHub Releases are not used — the tag is the release.
 
