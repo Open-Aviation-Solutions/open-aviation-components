@@ -284,13 +284,17 @@ export class ClimbPerformanceElement extends HTMLElement {
     if (this._dragging && event.touches[0]) this._updateCursor(this._canvasX(event.touches[0].clientX))
   }
   private _onKeyDown = (event: KeyboardEvent) => {
-    if (event.key === 'ArrowLeft') {
-      event.preventDefault()
-      this._cursorV = Math.max(VS_NORM, this._cursorV - 0.02); this._dirty = true
-    } else if (event.key === 'ArrowRight') {
-      event.preventDefault()
-      this._cursorV = Math.min(VMAX_NORM, this._cursorV + 0.02); this._dirty = true
-    }
+    const direction = event.key === 'ArrowLeft' ? -1 : event.key === 'ArrowRight' ? 1 : 0
+    if (!direction) return
+    event.preventDefault()
+    const from = this._cursorV
+    const next = Math.max(VS_NORM, Math.min(VMAX_NORM, from + direction * 0.02))
+    // A step that would pass Vx, Vy or Vmd stops on the first of them instead, so
+    // the keys reach the key speeds (VS and Vmax are reached by the clamp).
+    const passed = [this._model.vx, this._model.vy, VMD_NORM]
+      .filter(target => (target - from) * direction > 1e-9 && (next - target) * direction >= 0)
+    this._cursorV = passed.length ? (direction > 0 ? Math.min(...passed) : Math.max(...passed)) : next
+    this._dirty = true
   }
 
   private _areas(): { left: ChartArea; right: ChartArea } {
@@ -419,7 +423,7 @@ export class ClimbPerformanceElement extends HTMLElement {
     const speedMarkers = [
       { v: this._model.vx, color: CLR_VX,  lw: 1.5, label: 'Vx'  },
       { v: this._model.vy, color: CLR_VY,  lw: 1.5, label: 'Vy'  },
-      { v: 1.0,            color: CLR_VMD, lw: 1.0, label: 'Vmd' },
+      { v: VMD_NORM,       color: CLR_VMD, lw: 1.0, label: 'Vmd' },
     ].sort((a, b) => a.v - b.v)
     for (const { v, color, lw } of speedMarkers) {
       const px = this._vToX(v, area)
@@ -502,7 +506,7 @@ export class ClimbPerformanceElement extends HTMLElement {
       { v: VS_NORM,        label: 'VS',  color: '#94a3b8', bold: false },
       { v: this._model.vx, label: 'Vx',  color: CLR_VX,   bold: true  },
       { v: this._model.vy, label: 'Vy',  color: CLR_VY,   bold: true  },
-      { v: 1.0,            label: 'Vmd', color: CLR_VMD,  bold: false },
+      { v: VMD_NORM,       label: 'Vmd', color: CLR_VMD,  bold: false },
     ].sort((a, b) => a.v - b.v)
     const labelBaseY = area.y + area.h + STRIP_SKIP
     const showKts = this._vsKts !== null && this._cruiseKts !== null
@@ -605,7 +609,7 @@ export class ClimbPerformanceElement extends HTMLElement {
     const speedMarkers = [
       { v: this._model.vx, color: CLR_VX,  lw: 1.5 },
       { v: this._model.vy, color: CLR_VY,  lw: 1.5 },
-      { v: 1.0,            color: CLR_VMD, lw: 1.0 },
+      { v: VMD_NORM,       color: CLR_VMD, lw: 1.0 },
     ]
     for (const { v, color, lw } of speedMarkers) {
       const px = this._vToX(v, area)
@@ -730,7 +734,7 @@ export class ClimbPerformanceElement extends HTMLElement {
           { val: powerRequired(v),  color: CLR_REQ,   label: 'Reqd'  },
         ],
         // The origin line's slope, PR/v. Since PR = D·v it is the drag at v, the
-        // same number as the thrust chart's Reqd (index.test.ts checks PR/v = D).
+        // same number as the thrust chart's Reqd.
         readouts: [{ val: powerRequired(v) / v, color: originLineClr, label: 'Slope P/v' }],
       },
     ]) {

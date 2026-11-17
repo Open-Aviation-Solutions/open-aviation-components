@@ -30,8 +30,9 @@ key speed, so Vmd can be selected even when Vy sits within the snap distance of 
 The power chart's cursor readout includes `Slope P/v`, the line's slope, computed as
 `powerRequired(v) / v`. In the normalised units that equals `thrustRequired(v)`, so it is the
 same number as the left chart's `Reqd`: slope on the right equals height on the left.
-`index.test.ts` checks that `powerRequired(v) / v` equals `thrustRequired(v)` across the speed
-range.
+`index.test.ts` checks the identity `powerRequired(v) / v = thrustRequired(v)` across the speed
+range, as the issue asked; since `powerRequired` is defined as `thrustRequired(v) · v`, that
+tests floating point, not the drawn readout.
 
 ## Physics model
 
@@ -86,7 +87,7 @@ at construction and again whenever the `vztp` attribute changes.
 
 ## Cursor interaction
 
-The cursor (`_cursorV`) is a normalised speed value dragged by mouse or touch across both charts simultaneously. Magnetic snap kicks in within `SNAP_THRESH = 0.025` of VS, Vx, Vy, Vmd, and Vmax, to the nearest of them, so Vmd stays reachable when Vy sits close to it (as with the default `vztp`). Arrow keys move the cursor by 0.02 per step when the element is focused.
+The cursor (`_cursorV`) is a normalised speed value dragged by mouse or touch across both charts simultaneously. Magnetic snap kicks in within `SNAP_THRESH = 0.025` of VS, Vx, Vy, Vmd, and Vmax, to the nearest of them, so Vmd stays reachable when Vy sits close to it (as with the default `vztp`). Arrow keys move the cursor by 0.02 per step when the element is focused; a step that would pass Vx, Vy or Vmd stops on it instead, so the keys reach the key speeds too (VS and Vmax are reached at the ends of the range).
 
 The cursor stays between VS and Vmax, though the axis starts at 0.
 
