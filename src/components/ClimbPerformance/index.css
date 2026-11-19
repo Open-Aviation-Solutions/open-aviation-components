@@ -7,6 +7,12 @@
   height: 540px;
 }
 
+/* Stacked at narrow widths (see INSTRUCTIONS.md), each chart keeps the given
+   height. The `height` attribute is set inline, doubled by the element. */
+:host(:state(stacked)) {
+  height: 1080px;
+}
+
 canvas {
   display: block;
   position: absolute;
@@ -14,6 +20,8 @@ canvas {
   width: 100%;
   height: 100%;
   cursor: ew-resize;
+  /* A vertical swipe scrolls the page; a sideways one moves the cursor. */
+  touch-action: pan-y;
 }
 
 .help-link {

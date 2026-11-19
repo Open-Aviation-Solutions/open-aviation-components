@@ -4,10 +4,11 @@ Source: `src/components/ClimbPerformance/index.ts` (custom element `climb-perfor
 
 ## What it shows
 
-Two side-by-side 2D canvas charts with a shared draggable cursor:
+Two 2D canvas charts with a shared draggable cursor, side by side or, at narrow widths, stacked
+(see "Layout" below):
 
-- **Left chart — Thrust vs Airspeed:** orange hyperbolic TA curve (`TA = PA/v`), red U-shaped TR curve (drag), green fill where TA > TR (excess thrust → angle of climb). Vx dashed line marks the maximum.
-- **Right chart — Power vs Airspeed:** orange flat PA line, red asymmetric PR curve (`PR = D·v`), green fill where PA > PR (excess power → rate of climb). Vy dashed line marks the maximum.
+- **Left (or top) chart — Thrust vs Airspeed:** orange hyperbolic TA curve (`TA = PA/v`), red U-shaped TR curve (drag), green fill where TA > TR (excess thrust → angle of climb). Vx dashed line marks the maximum.
+- **Right (or bottom) chart — Power vs Airspeed:** orange flat PA line, red asymmetric PR curve (`PR = D·v`), green fill where PA > PR (excess power → rate of climb). Vy dashed line marks the maximum.
 
 Both charts also show the Vy marker (purple) and the Vx marker (sky blue) for cross-chart comparison, plus Vmd (slate) at v = 1.0.
 
@@ -33,6 +34,58 @@ same number as the left chart's `Reqd`: slope on the right equals height on the 
 `index.test.ts` checks the identity `powerRequired(v) / v = thrustRequired(v)` across the speed
 range, as the issue asked; since `powerRequired` is defined as `thrustRequired(v) · v`, that
 tests floating point, not the drawn readout.
+
+## Layout
+
+Side by side, the thrust chart is on the left and the power chart on the right. When each plot
+area would be narrower than `MIN_PLOT_W` (220 px) side by side, that is when the component is
+narrower than 634 px, the charts are stacked instead: thrust on top, power below, each at the full
+width. A phone's width (390 px viewport) stacks them; the docs page at a desktop's width (its
+component is 652 px wide at a 1280 px viewport, plot areas 229 px) keeps them side by side.
+
+220 px is the narrowest at which the x-axis labels and the cursor's readouts fit side by side:
+
+- With the cursor at Vmd, two thirds of the way along the axis, its dot labels (`Avail: 1.75`,
+  `Reqd: 1.00`, about 80 px in bold 13 px system-ui) still fit to the cursor's right, as they do at
+  wider widths. Below about 220 px they flip to its left, onto the curves, at the key speeds.
+- At every cursor position the `Slope P/v` readout (about 110 px) fits on one side of the cursor or
+  the other from about 194 px.
+- The four x-axis labels with their kt values (about 30 px each) fit without overlapping from about
+  150 px.
+
+Stacked, each chart keeps the given `height`, so the component is twice as tall. The stacked state
+is the element's `stacked` custom state (`ElementInternals.states`), so the page can't reset it by
+rewriting `style`:
+
+- **The default height** is in the CSS: 540 px, and 1080 px under `:host(:state(stacked))`.
+- **The `height` attribute** is set inline, as it always was, so it still wins over the page's CSS;
+  stacked, the element sets `calc(2 * (<value>))`. A value that isn't a length (`height="400"`) is
+  rejected by the browser and ignored, leaving the default.
+- **A height set by the page's CSS** is the whole component's and is not doubled. Where half of it
+  leaves the plots shorter than `MIN_STACKED_PLOT_H` (120 px), the charts are drawn side by side.
+- The charts aren't stacked at all where the given height itself leaves less than
+  `MIN_STACKED_PLOT_H` for a stacked plot. A change to `height` is judged afresh: the element
+  unstacks, then stacks again in the next frame if there is room.
+- Browsers without custom states (Safari before 17.4, Chromium before 125) keep the charts side by
+  side.
+
+The width is checked in the `ResizeObserver` callback, but the stacked state, which changes the
+host's height, is applied in the next animation frame (`_layoutFrame`), so the observer never
+changes the size it is reporting. That frame also sizes the drawing buffer to the new height, so
+no frame is drawn into the old buffer. It runs whether or not the component is on screen, so the
+page's height is right before the component scrolls into view. Once stacked, the element stays
+stacked while the width is narrow, so doubling the height can't flip the layout back.
+
+Each chart keeps its own title, cursor readouts, excess strip, x-axis labels and legend, and the
+cursor is still shared: a drag on either chart moves both.
+
+### Cursor labels
+
+The dot labels go to the cursor's right below `LABEL_FLIP_V` (1.15), and to its left above it, or
+sooner where they would run past the chart's right margin. The excess % label goes on the same
+side, at least a row below the upper dot's label, and the `Slope P/v` readout beneath them. Every
+one is kept between the plot's left edge and the right margin (`_cursorLabelLeft`); where a label
+cannot fit both, the left edge wins.
 
 ## Physics model
 
@@ -87,7 +140,7 @@ at construction and again whenever the `vztp` attribute changes.
 
 ## Cursor interaction
 
-The cursor (`_cursorV`) is a normalised speed value dragged by mouse or touch across both charts simultaneously. Magnetic snap kicks in within `SNAP_THRESH = 0.025` of VS, Vx, Vy, Vmd, and Vmax, to the nearest of them, so Vmd stays reachable when Vy sits close to it (as with the default `vztp`). Arrow keys move the cursor by 0.02 per step when the element is focused; a step that would pass Vx, Vy or Vmd stops on it instead, so the keys reach the key speeds too (VS and Vmax are reached at the ends of the range).
+The cursor (`_cursorV`) is a normalised speed value dragged by mouse or touch across both charts simultaneously. Magnetic snap kicks in within `SNAP_THRESH = 0.025` of VS, Vx, Vy, Vmd, and Vmax, to the nearest of them, so Vmd stays reachable when Vy sits close to it (as with the default `vztp`). On a touchscreen the canvas has `touch-action: pan-y`: a touch that moves mainly vertically scrolls the page (the stacked component can be taller than a phone's screen), one that moves mainly sideways drags the cursor, and one that doesn't move sets it where it touched. Focusing the element on a press uses `preventScroll`, so a tall component doesn't scroll the page under the pointer. Arrow keys move the cursor by 0.02 per step when the element is focused; a step that would pass Vx, Vy or Vmd stops on it instead, so the keys reach the key speeds too (VS and Vmax are reached at the ends of the range).
 
 The cursor stays between VS and Vmax, though the axis starts at 0.
 
@@ -98,7 +151,8 @@ At the cursor position:
 
 ## Attributes
 
-- `height` — CSS height of the component (e.g., `400px`). Defaults to `540px` via CSS.
+- `height` — CSS height of each chart (e.g., `400px`). Defaults to `540px` via CSS. Stacked, the
+  component is twice this height (see "Layout" above).
 - `vs` — stall speed in kts. Defaults to `45`. Set to empty string (`vs=""`) for normalised labels.
 - `cruise-kts` — speed at VMAX_NORM = 1.5 in kts. Defaults to `145`. Set to empty string for normalised labels.
 - `vztp` — normalised prop zero-thrust speed; tunes the Vy–Vmd relationship (see the physics
