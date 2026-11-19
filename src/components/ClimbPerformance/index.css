@@ -4,7 +4,12 @@
   border-radius: 8px;
   overflow: hidden;
   background: #f8fafc;
-  height: 540px;
+  /* One chart's height (the `height` attribute sets it), times the number of
+     rows: the element sets the rows to 2 when it stacks the charts at narrow
+     widths, so each chart keeps the given height. */
+  --climb-performance-chart-height: 540px;
+  --climb-performance-rows: 1;
+  height: calc(var(--climb-performance-chart-height) * var(--climb-performance-rows));
 }
 
 canvas {

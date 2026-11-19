@@ -126,6 +126,18 @@ const ML = 65, MT = 56, MR = 20, MB = 160, CHART_GAP = 24
 const STRIP_GAP  = 8    // gap between main chart bottom and excess strip top
 const EXCESS_H   = 48   // excess strip height in CSS px
 const STRIP_SKIP = STRIP_GAP + EXCESS_H  // how far down x-axis labels are shifted
+// The narrowest plot area at which the charts sit side by side; below it they are
+// stacked, thrust above power, each at the full width and the given height. At
+// 220 px the cursor's labels at Vmd still fit to its right (Vmd sits two thirds of
+// the way along the axis, and "Reqd: 1.00" is about 80 px wide), so the labels
+// don't flip onto the curves at the key speeds, and the x-axis labels and their kt
+// values fit without overlapping. See INSTRUCTIONS.md.
+export const MIN_PLOT_W = 220
+
+// The width of each plot area with the charts side by side on a canvas `canvasWidth` wide.
+export function sideBySidePlotWidth(canvasWidth: number): number {
+  return Math.floor((canvasWidth - ML - MR - CHART_GAP - ML - MR) / 2)
+}
 
 // ── Colors ────────────────────────────────────────────────────────────────────
 const BG          = '#f8fafc'
@@ -169,6 +181,7 @@ export class ClimbPerformanceElement extends HTMLElement {
   private _vsKts: number | null = 45
   private _cruiseKts: number | null = 145
   private _showSlopeValue = false
+  private _stacked = false
 
   constructor() {
     super()
@@ -208,6 +221,7 @@ export class ClimbPerformanceElement extends HTMLElement {
       this._canvas.width  = Math.round(this._canvas.clientWidth  * this._dpr)
       this._canvas.height = Math.round(this._canvas.clientHeight * this._dpr)
       this._ctx.scale(this._dpr, this._dpr)
+      this._setStacked(sideBySidePlotWidth(this._canvas.clientWidth) < MIN_PLOT_W)
       this._dirty = true
     })
     this._ro.observe(this._canvas)
@@ -229,7 +243,11 @@ export class ClimbPerformanceElement extends HTMLElement {
   }
 
   attributeChangedCallback(name: string, _old: string | null, value: string | null) {
-    if (name === 'height') this.style.height = value ?? ''
+    // The given height is one chart's: stacked, the component is twice as tall (index.css).
+    if (name === 'height') {
+      if (value) this.style.setProperty('--climb-performance-chart-height', value)
+      else this.style.removeProperty('--climb-performance-chart-height')
+    }
     if (name === 'vs') this._vsKts = value === null ? 45 : (value ? parseFloat(value) : null)
     if (name === 'cruise-kts') this._cruiseKts = value === null ? 145 : (value ? parseFloat(value) : null)
     if (name === 'show-help') this._helpLinkEl.style.display = value === 'false' ? 'none' : ''
@@ -245,16 +263,30 @@ export class ClimbPerformanceElement extends HTMLElement {
     this._dirty = true
   }
 
-  private _canvasX(clientX: number): number {
-    const rect = this._canvas.getBoundingClientRect()
-    if (!rect.width) return 0
-    return (clientX - rect.left) / rect.width * this._canvas.clientWidth
+  private _setStacked(stacked: boolean) {
+    if (stacked === this._stacked) return
+    this._stacked = stacked
+    if (stacked) this.style.setProperty('--climb-performance-rows', '2')
+    else this.style.removeProperty('--climb-performance-rows')
   }
 
-  private _updateCursor(canvasX: number) {
-    const { left, right } = this._areas()
-    const midX = left.x + left.w + (CHART_GAP + MR) / 2
-    const area = canvasX < midX ? left : right
+  // A pointer's position in canvas CSS px.
+  private _canvasPoint(point: { clientX: number; clientY: number }): { x: number; y: number } {
+    const rect = this._canvas.getBoundingClientRect()
+    if (!rect.width || !rect.height) return { x: 0, y: 0 }
+    return {
+      x: (point.clientX - rect.left) / rect.width  * this._canvas.clientWidth,
+      y: (point.clientY - rect.top)  / rect.height * this._canvas.clientHeight,
+    }
+  }
+
+  private _updateCursor({ x: canvasX, y: canvasY }: { x: number; y: number }) {
+    const { thrust, power } = this._areas()
+    // Side by side, the chart is the one the pointer is across from; stacked,
+    // the one it is level with.
+    const area = this._stacked
+      ? (canvasY < power.y - MT ? thrust : power)
+      : (canvasX < thrust.x + thrust.w + (CHART_GAP + MR) / 2 ? thrust : power)
     let v = (canvasX - area.x) / area.w * VMAX_NORM
     v = Math.max(VS_NORM, Math.min(VMAX_NORM, v))
     // Snap to the nearest key speed in range, so Vmd stays reachable when Vy sits
@@ -271,19 +303,19 @@ export class ClimbPerformanceElement extends HTMLElement {
 
   private _onMouseDown = (event: MouseEvent) => {
     this._dragging = true; this.focus()
-    this._updateCursor(this._canvasX(event.clientX))
+    this._updateCursor(this._canvasPoint(event))
   }
   private _onMouseMove = (event: MouseEvent) => {
-    if (this._dragging) this._updateCursor(this._canvasX(event.clientX))
+    if (this._dragging) this._updateCursor(this._canvasPoint(event))
   }
   private _onDragEnd = () => { this._dragging = false }
   private _onTouchStart = (event: TouchEvent) => {
     event.preventDefault(); this._dragging = true; this.focus()
-    if (event.touches[0]) this._updateCursor(this._canvasX(event.touches[0].clientX))
+    if (event.touches[0]) this._updateCursor(this._canvasPoint(event.touches[0]))
   }
   private _onTouchMove = (event: TouchEvent) => {
     event.preventDefault()
-    if (this._dragging && event.touches[0]) this._updateCursor(this._canvasX(event.touches[0].clientX))
+    if (this._dragging && event.touches[0]) this._updateCursor(this._canvasPoint(event.touches[0]))
   }
   private _onKeyDown = (event: KeyboardEvent) => {
     const direction = event.key === 'ArrowLeft' ? -1 : event.key === 'ArrowRight' ? 1 : 0
@@ -299,13 +331,23 @@ export class ClimbPerformanceElement extends HTMLElement {
     this._dirty = true
   }
 
-  private _areas(): { left: ChartArea; right: ChartArea } {
+  // Side by side, thrust on the left; stacked, thrust on top, each chart in its own
+  // half of the canvas, which is twice the given height then.
+  private _areas(): { thrust: ChartArea; power: ChartArea } {
     const W = this._canvas.clientWidth, H = this._canvas.clientHeight
-    const chartW = Math.floor((W - ML - MR - CHART_GAP - ML - MR) / 2)
+    if (this._stacked) {
+      const rowH = Math.floor(H / 2)
+      const chartW = W - ML - MR, chartH = rowH - MT - MB
+      return {
+        thrust: { x: ML, y: MT,        w: chartW, h: chartH },
+        power:  { x: ML, y: rowH + MT, w: chartW, h: chartH },
+      }
+    }
+    const chartW = sideBySidePlotWidth(W)
     const chartH = H - MT - MB
     return {
-      left:  { x: ML,                                y: MT, w: chartW, h: chartH },
-      right: { x: ML + chartW + MR + CHART_GAP + ML, y: MT, w: chartW, h: chartH },
+      thrust: { x: ML,                                y: MT, w: chartW, h: chartH },
+      power:  { x: ML + chartW + MR + CHART_GAP + ML, y: MT, w: chartW, h: chartH },
     }
   }
 
@@ -366,14 +408,14 @@ export class ClimbPerformanceElement extends HTMLElement {
     const ctx = this._ctx
     const W = this._canvas.clientWidth, H = this._canvas.clientHeight
     if (W < 80 || H < 80) return
-    const { left, right } = this._areas()
+    const { thrust, power } = this._areas()
     const yMaxT = this._yMax('thrust'), yMaxP = this._yMax('power')
     ctx.fillStyle = BG; ctx.fillRect(0, 0, W, H)
-    this._drawChart(ctx, left,  'thrust', yMaxT)
-    this._drawChart(ctx, right, 'power',  yMaxP)
-    this._drawCursor(ctx, left, right, yMaxT, yMaxP)
-    this._drawExcessStrip(ctx, left,  this._stripArea(left),  'thrust', this._cursorV)
-    this._drawExcessStrip(ctx, right, this._stripArea(right), 'power',  this._cursorV)
+    this._drawChart(ctx, thrust, 'thrust', yMaxT)
+    this._drawChart(ctx, power,  'power',  yMaxP)
+    this._drawCursor(ctx, thrust, power, yMaxT, yMaxP)
+    this._drawExcessStrip(ctx, thrust, this._stripArea(thrust), 'thrust', this._cursorV)
+    this._drawExcessStrip(ctx, power,  this._stripArea(power),  'power',  this._cursorV)
   }
 
   private _yMax(type: 'thrust' | 'power'): number {
@@ -702,7 +744,7 @@ export class ClimbPerformanceElement extends HTMLElement {
 
   private _drawCursor(
     ctx: CanvasRenderingContext2D,
-    left: ChartArea, right: ChartArea,
+    thrust: ChartArea, power: ChartArea,
     yMaxT: number, yMaxP: number
   ) {
     const v = this._cursorV
@@ -713,16 +755,16 @@ export class ClimbPerformanceElement extends HTMLElement {
     // as `Slope P/v`; at Vmd it lies on the dashed tangent and is drawn heavier in
     // the Vmd colour.
     ctx.save()
-    ctx.beginPath(); ctx.rect(right.x, right.y, right.w, right.h); ctx.clip()
+    ctx.beginPath(); ctx.rect(power.x, power.y, power.w, power.h); ctx.clip()
     ctx.strokeStyle = originLineClr
     ctx.lineWidth = atVmd ? 2 : 1
     if (!atVmd) ctx.globalAlpha = 0.7
-    this._strokeOriginLine(ctx, right, yMaxP, v)
+    this._strokeOriginLine(ctx, power, yMaxP, v)
     ctx.restore()
 
-    for (const { area, yMax, pts, readouts } of [
+    for (const { area, yMax, type, pts, readouts } of [
       {
-        area: left, yMax: yMaxT,
+        area: thrust, yMax: yMaxT, type: 'thrust' as const,
         pts: [
           { val: this._model.thrustAvailable(v), color: CLR_AVAIL, label: 'Avail' },
           { val: thrustRequired(v),  color: CLR_REQ,   label: 'Reqd'  },
@@ -730,7 +772,7 @@ export class ClimbPerformanceElement extends HTMLElement {
         readouts: [],
       },
       {
-        area: right, yMax: yMaxP,
+        area: power, yMax: yMaxP, type: 'power' as const,
         pts: [
           { val: this._model.powerAvailable(v), color: CLR_AVAIL, label: 'Avail' },
           { val: powerRequired(v),  color: CLR_REQ,   label: 'Reqd'  },
@@ -760,29 +802,40 @@ export class ClimbPerformanceElement extends HTMLElement {
       ctx.fillStyle = CLR_CURSOR; ctx.textAlign = 'left'; ctx.textBaseline = 'top'
       ctx.fillText(speedLabel, labelLeft, labelTop)
 
-      this._drawCursorDots(ctx, cursorX, area, yMax, pts, readouts)
-      this._drawExcess(ctx, cursorX, area, yMax, v, area === left ? 'thrust' : 'power')
+      // The dot labels go to the cursor's left past LABEL_FLIP_V, or sooner where
+      // they would run past the chart's right margin; the excess % label follows
+      // them, so the two are always on the same side.
+      ctx.font = 'bold 13px system-ui,sans-serif'
+      const widestDotLabel = Math.max(...pts.map(({ val, label }) => ctx.measureText(`${label}: ${val.toFixed(2)}`).width))
+      const onLeft = cursorX > this._vToX(LABEL_FLIP_V, area) || cursorX + 10 + widestDotLabel > this._labelRightLimit(area)
+
+      this._drawCursorDots(ctx, cursorX, onLeft, area, yMax, pts, readouts)
+      this._drawExcess(ctx, cursorX, onLeft, area, yMax, v, type)
     }
+  }
+
+  // Labels beside the cursor may run into the right margin, up to this x.
+  private _labelRightLimit(area: ChartArea): number {
+    return area.x + area.w + MR - 4
+  }
+
+  // Left edge for a label `width` wide, `gap` from the cursor on the side given,
+  // kept between the plot's left edge (clear of the y-axis labels) and the right
+  // margin; where it can't fit both, the left edge wins.
+  private _cursorLabelLeft(cursorX: number, gap: number, onLeft: boolean, width: number, area: ChartArea): number {
+    const beside = onLeft ? cursorX - gap - width : cursorX + gap
+    return Math.max(area.x + 2, Math.min(this._labelRightLimit(area) - width, beside))
   }
 
   private _drawCursorDots(
     ctx: CanvasRenderingContext2D,
-    cursorX: number, area: ChartArea, yMax: number,
+    cursorX: number, onLeft: boolean, area: ChartArea, yMax: number,
     points: Array<{ val: number; color: string; label: string }>,
     readouts: Array<{ val: number; color: string; label: string }>
   ) {
     const sorted = [...points].sort((a, b) => b.val - a.val)
     ctx.font = 'bold 13px system-ui,sans-serif'
     ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
-    // The dot labels go to the cursor's left past LABEL_FLIP_V, or sooner where
-    // they would run past the chart's right margin.
-    const rightLimit = area.x + area.w + MR - 4
-    const widestDotLabel = Math.max(...points.map(({ val, label }) => ctx.measureText(`${label}: ${val.toFixed(2)}`).width))
-    const onLeft = cursorX > this._vToX(LABEL_FLIP_V, area) || cursorX + 10 + widestDotLabel > rightLimit
-    const labelX = onLeft ? cursorX - 10 : cursorX + 10
-    // Left edge for a label: beside the cursor, moved left where it would still run
-    // past the right margin (a readout can be longer than the dot labels).
-    const labelLeft = (width: number) => onLeft ? labelX - width : Math.min(labelX, rightLimit - width)
     let yOffset = 0
     let lastLabelY = area.y + 8 - 16
     for (const { val, color, label } of sorted) {
@@ -794,18 +847,18 @@ export class ClimbPerformanceElement extends HTMLElement {
       const labelY = Math.max(area.y + 8, Math.min(area.y + area.h - 8, dotY + yOffset))
       const text = `${label}: ${val.toFixed(2)}`
       ctx.fillStyle = color
-      ctx.fillText(text, labelLeft(ctx.measureText(text).width), labelY)
+      ctx.fillText(text, this._cursorLabelLeft(cursorX, 10, onLeft, ctx.measureText(text).width, area), labelY)
       lastLabelY = labelY
       yOffset += 16
     }
     // Readouts with no point on this chart (the origin line's slope) stack
     // beneath the last dot label, on a background, since being the longest text
-    // they are the likeliest to be moved left across the cursor's lines.
+    // they are the likeliest to be moved across the cursor's lines.
     for (const { val, color, label } of readouts) {
       lastLabelY = Math.min(area.y + area.h - 8, lastLabelY + 16)
       const text = `${label}: ${val.toFixed(2)}`
       const width = ctx.measureText(text).width
-      const left = labelLeft(width)
+      const left = this._cursorLabelLeft(cursorX, 10, onLeft, width, area)
       ctx.fillStyle = BG; ctx.fillRect(left - 2, lastLabelY - 8, width + 4, 16)
       ctx.fillStyle = color
       ctx.fillText(text, left, lastLabelY)
@@ -814,7 +867,7 @@ export class ClimbPerformanceElement extends HTMLElement {
 
   private _drawExcess(
     ctx: CanvasRenderingContext2D,
-    cursorX: number, area: ChartArea, yMax: number,
+    cursorX: number, onLeft: boolean, area: ChartArea, yMax: number,
     v: number, type: 'thrust' | 'power'
   ) {
     const avail = type === 'thrust' ? this._model.thrustAvailable(v) : this._model.powerAvailable(v)
@@ -825,14 +878,18 @@ export class ClimbPerformanceElement extends HTMLElement {
     const excess = avail - req
     const pct = Math.abs(Math.round(excess / req * 100))
     const isExcess = excess > 0
-    const midY = (yAvail + yReq) / 2
-    const onRight = cursorX < this._vToX(LABEL_FLIP_V, area)
+    // Midway between the two curves, but at least a row below the upper dot's
+    // label, which is on the same side: near Vmax the curves are close enough for
+    // the midpoint to fall on it. The lower dot's label sits a row below its dot,
+    // so the gap of at least 16 px checked above leaves a free row between them.
+    const upperLabelY = Math.max(area.y + 8, Math.min(yAvail, yReq))
+    const midY = Math.max((yAvail + yReq) / 2, upperLabelY + 16)
     ctx.font = '13px system-ui,sans-serif'; ctx.textBaseline = 'middle'
     const text = isExcess ? `+${pct}%` : `−${pct}%`
     const width = ctx.measureText(text).width
     ctx.textAlign = 'left'
     ctx.fillStyle = isExcess ? 'rgba(34,197,94,0.9)' : 'rgba(239,68,68,0.85)'
-    ctx.fillText(text, onRight ? Math.min(cursorX + 8, area.x + area.w + MR - 4 - width) : cursorX - 8 - width, midY)
+    ctx.fillText(text, this._cursorLabelLeft(cursorX, 8, onLeft, width, area), midY)
   }
 
   private _speedLabel(v: number): string {

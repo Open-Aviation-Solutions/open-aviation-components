@@ -4,10 +4,11 @@ Source: `src/components/ClimbPerformance/index.ts` (custom element `climb-perfor
 
 ## What it shows
 
-Two side-by-side 2D canvas charts with a shared draggable cursor:
+Two 2D canvas charts with a shared draggable cursor, side by side or, at narrow widths, stacked
+(see "Layout" below):
 
-- **Left chart — Thrust vs Airspeed:** orange hyperbolic TA curve (`TA = PA/v`), red U-shaped TR curve (drag), green fill where TA > TR (excess thrust → angle of climb). Vx dashed line marks the maximum.
-- **Right chart — Power vs Airspeed:** orange flat PA line, red asymmetric PR curve (`PR = D·v`), green fill where PA > PR (excess power → rate of climb). Vy dashed line marks the maximum.
+- **Left (or top) chart — Thrust vs Airspeed:** orange hyperbolic TA curve (`TA = PA/v`), red U-shaped TR curve (drag), green fill where TA > TR (excess thrust → angle of climb). Vx dashed line marks the maximum.
+- **Right (or bottom) chart — Power vs Airspeed:** orange flat PA line, red asymmetric PR curve (`PR = D·v`), green fill where PA > PR (excess power → rate of climb). Vy dashed line marks the maximum.
 
 Both charts also show the Vy marker (purple) and the Vx marker (sky blue) for cross-chart comparison, plus Vmd (slate) at v = 1.0.
 
@@ -33,6 +34,40 @@ same number as the left chart's `Reqd`: slope on the right equals height on the 
 `index.test.ts` checks the identity `powerRequired(v) / v = thrustRequired(v)` across the speed
 range, as the issue asked; since `powerRequired` is defined as `thrustRequired(v) · v`, that
 tests floating point, not the drawn readout.
+
+## Layout
+
+Side by side, the thrust chart is on the left and the power chart on the right. When each plot
+area would be narrower than `MIN_PLOT_W` (220 px) side by side, that is when the component is
+narrower than 634 px, the charts are stacked instead: thrust on top, power below, each at the full
+width. A phone's width (390 px viewport) stacks them; the docs page at a desktop's width (its
+component is 652 px wide at a 1280 px viewport, plot areas 229 px) keeps them side by side.
+
+220 px is the narrowest at which the x-axis labels and the cursor's readouts fit side by side:
+
+- With the cursor at Vmd, two thirds of the way along the axis, its dot labels (`Avail: 1.75`,
+  `Reqd: 1.00`, about 80 px in bold 13 px system-ui) still fit to the cursor's right, as they do at
+  wider widths. Below about 220 px they flip to its left, onto the curves, at the key speeds.
+- At every cursor position the `Slope P/v` readout (about 110 px) fits on one side of the cursor or
+  the other from about 194 px.
+- The four x-axis labels with their kt values (about 30 px each) fit without overlapping from about
+  150 px.
+
+Stacked, each chart keeps the given `height`, so the component is twice as tall: the CSS sets the
+host's height to `--climb-performance-chart-height` (which the `height` attribute sets; 540 px by
+default) times `--climb-performance-rows`, which the element sets to 2 when it stacks the charts.
+A height set on the element from outside, in the page's CSS, is the whole component's and is not
+doubled. Each chart keeps its own title, cursor readouts, excess strip, x-axis labels and legend,
+and the cursor is still shared: a drag on either chart moves both. The layout is chosen in the
+`ResizeObserver` callback, from the canvas width alone, so doubling the height can't flip it back.
+
+### Cursor labels
+
+The dot labels go to the cursor's right below `LABEL_FLIP_V` (1.15), and to its left above it, or
+sooner where they would run past the chart's right margin. The excess % label goes on the same
+side, at least a row below the upper dot's label, and the `Slope P/v` readout beneath them. Every
+one is kept between the plot's left edge and the right margin (`_cursorLabelLeft`); where a label
+cannot fit both, the left edge wins.
 
 ## Physics model
 
@@ -98,7 +133,8 @@ At the cursor position:
 
 ## Attributes
 
-- `height` — CSS height of the component (e.g., `400px`). Defaults to `540px` via CSS.
+- `height` — CSS height of each chart (e.g., `400px`). Defaults to `540px` via CSS. Stacked, the
+  component is twice this height (see "Layout" above).
 - `vs` — stall speed in kts. Defaults to `45`. Set to empty string (`vs=""`) for normalised labels.
 - `cruise-kts` — speed at VMAX_NORM = 1.5 in kts. Defaults to `145`. Set to empty string for normalised labels.
 - `vztp` — normalised prop zero-thrust speed; tunes the Vy–Vmd relationship (see the physics
