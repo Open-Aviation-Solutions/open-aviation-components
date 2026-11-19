@@ -53,13 +53,31 @@ component is 652 px wide at a 1280 px viewport, plot areas 229 px) keeps them si
 - The four x-axis labels with their kt values (about 30 px each) fit without overlapping from about
   150 px.
 
-Stacked, each chart keeps the given `height`, so the component is twice as tall: the CSS sets the
-host's height to `--climb-performance-chart-height` (which the `height` attribute sets; 540 px by
-default) times `--climb-performance-rows`, which the element sets to 2 when it stacks the charts.
-A height set on the element from outside, in the page's CSS, is the whole component's and is not
-doubled. Each chart keeps its own title, cursor readouts, excess strip, x-axis labels and legend,
-and the cursor is still shared: a drag on either chart moves both. The layout is chosen in the
-`ResizeObserver` callback, from the canvas width alone, so doubling the height can't flip it back.
+Stacked, each chart keeps the given `height`, so the component is twice as tall. The stacked state
+is the element's `stacked` custom state (`ElementInternals.states`), so the page can't reset it by
+rewriting `style`:
+
+- **The default height** is in the CSS: 540 px, and 1080 px under `:host(:state(stacked))`.
+- **The `height` attribute** is set inline, as it always was, so it still wins over the page's CSS;
+  stacked, the element sets `calc(2 * (<value>))`. A value that isn't a length (`height="400"`) is
+  rejected by the browser and ignored, leaving the default.
+- **A height set by the page's CSS** is the whole component's and is not doubled. Where half of it
+  leaves the plots shorter than `MIN_STACKED_PLOT_H` (120 px), the charts are drawn side by side.
+- The charts aren't stacked at all where the given height itself leaves less than
+  `MIN_STACKED_PLOT_H` for a stacked plot. A change to `height` is judged afresh: the element
+  unstacks, then stacks again in the next frame if there is room.
+- Browsers without custom states (Safari before 17.4, Chromium before 125) keep the charts side by
+  side.
+
+The width is checked in the `ResizeObserver` callback, but the stacked state, which changes the
+host's height, is applied in the next animation frame (`_layoutFrame`), so the observer never
+changes the size it is reporting. That frame also sizes the drawing buffer to the new height, so
+no frame is drawn into the old buffer. It runs whether or not the component is on screen, so the
+page's height is right before the component scrolls into view. Once stacked, the element stays
+stacked while the width is narrow, so doubling the height can't flip the layout back.
+
+Each chart keeps its own title, cursor readouts, excess strip, x-axis labels and legend, and the
+cursor is still shared: a drag on either chart moves both.
 
 ### Cursor labels
 
@@ -122,7 +140,7 @@ at construction and again whenever the `vztp` attribute changes.
 
 ## Cursor interaction
 
-The cursor (`_cursorV`) is a normalised speed value dragged by mouse or touch across both charts simultaneously. Magnetic snap kicks in within `SNAP_THRESH = 0.025` of VS, Vx, Vy, Vmd, and Vmax, to the nearest of them, so Vmd stays reachable when Vy sits close to it (as with the default `vztp`). Arrow keys move the cursor by 0.02 per step when the element is focused; a step that would pass Vx, Vy or Vmd stops on it instead, so the keys reach the key speeds too (VS and Vmax are reached at the ends of the range).
+The cursor (`_cursorV`) is a normalised speed value dragged by mouse or touch across both charts simultaneously. Magnetic snap kicks in within `SNAP_THRESH = 0.025` of VS, Vx, Vy, Vmd, and Vmax, to the nearest of them, so Vmd stays reachable when Vy sits close to it (as with the default `vztp`). On a touchscreen the canvas has `touch-action: pan-y`: a touch that moves mainly vertically scrolls the page (the stacked component can be taller than a phone's screen), one that moves mainly sideways drags the cursor, and one that doesn't move sets it where it touched. Focusing the element on a press uses `preventScroll`, so a tall component doesn't scroll the page under the pointer. Arrow keys move the cursor by 0.02 per step when the element is focused; a step that would pass Vx, Vy or Vmd stops on it instead, so the keys reach the key speeds too (VS and Vmax are reached at the ends of the range).
 
 The cursor stays between VS and Vmax, though the axis starts at 0.
 

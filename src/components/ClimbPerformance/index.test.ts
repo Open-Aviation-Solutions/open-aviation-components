@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { VMAX_NORM, VS_NORM, powerRequired, thrustRequired } from './index'
+import { MIN_PLOT_W, VMAX_NORM, VS_NORM, powerRequired, sideBySidePlotWidth, thrustRequired } from './index'
 
 describe('origin line on the power chart', () => {
   it('has a slope equal to the drag (thrust required) at every speed on the chart', () => {
@@ -14,5 +14,12 @@ describe('origin line on the power chart', () => {
       const speed = VS_NORM + (step / steps) * (VMAX_NORM - VS_NORM)
       expect(powerRequired(speed) / speed).toBeCloseTo(thrustRequired(speed), 12)
     }
+  })
+})
+
+describe('layout breakpoint', () => {
+  it('stacks the charts below a 634 px wide canvas, where each would be narrower than MIN_PLOT_W', () => {
+    expect(sideBySidePlotWidth(633)).toBeLessThan(MIN_PLOT_W)
+    expect(sideBySidePlotWidth(634)).toBeGreaterThanOrEqual(MIN_PLOT_W)
   })
 })

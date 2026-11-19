@@ -133,6 +133,10 @@ const STRIP_SKIP = STRIP_GAP + EXCESS_H  // how far down x-axis labels are shift
 // don't flip onto the curves at the key speeds, and the x-axis labels and their kt
 // values fit without overlapping. See INSTRUCTIONS.md.
 export const MIN_PLOT_W = 220
+// Stacked, each chart gets half the canvas. The charts aren't stacked where the given
+// height is too short for a plot this tall, and are drawn side by side where half the
+// canvas is (a height set on the element by the page's CSS is not doubled).
+const MIN_STACKED_PLOT_H = 120
 
 // The width of each plot area with the charts side by side on a canvas `canvasWidth` wide.
 export function sideBySidePlotWidth(canvasWidth: number): number {
@@ -181,10 +185,18 @@ export class ClimbPerformanceElement extends HTMLElement {
   private _vsKts: number | null = 45
   private _cruiseKts: number | null = 145
   private _showSlopeValue = false
+  private _heightAttr: string | null = null
+  private _internals: ElementInternals
+  // Whether the charts are stacked: chosen from the width, and shown to the CSS as
+  // the `stacked` custom state, which doubles the default height (index.css).
   private _stacked = false
+  // Where a touch started, until it is a drag (sideways) or a scroll (vertical).
+  private _touchStartX: number | null = null
+  private _touchStartY = 0
 
   constructor() {
     super()
+    this._internals = this.attachInternals()
     const shadow = this.attachShadow({ mode: 'open' })
     shadow.adoptedStyleSheets = [sheet]
     this._canvas = document.createElement('canvas')
@@ -207,22 +219,27 @@ export class ClimbPerformanceElement extends HTMLElement {
     this._canvas.addEventListener('mousedown', this._onMouseDown)
     this._canvas.addEventListener('mousemove', this._onMouseMove)
     window.addEventListener('mouseup', this._onDragEnd)
-    this._canvas.addEventListener('touchstart', this._onTouchStart, { passive: false })
+    // The canvas has `touch-action: pan-y` (index.css), so a vertical swipe on it
+    // scrolls the page, which matters once the stacked charts are taller than a
+    // phone's screen; only a sideways move is taken as a drag and cancelled.
+    this._canvas.addEventListener('touchstart', this._onTouchStart, { passive: true })
     this._canvas.addEventListener('touchmove', this._onTouchMove, { passive: false })
-    window.addEventListener('touchend', this._onDragEnd)
+    window.addEventListener('touchend', this._onTouchEnd)
+    window.addEventListener('touchcancel', this._onTouchCancel)
     this.addEventListener('keydown', this._onKeyDown)
   }
 
   connectedCallback() {
     this.tabIndex = 0
     this.style.outline = 'none'
+    // The callback only sizes the drawing buffer. The layout, which changes the
+    // host's height, is applied in the next animation frame, so the observer never
+    // changes the size it is reporting; that frame runs whether or not the
+    // component is on screen, so the page's height is right before it scrolls in.
     this._ro = new ResizeObserver(() => {
-      this._dpr = window.devicePixelRatio || 1
-      this._canvas.width  = Math.round(this._canvas.clientWidth  * this._dpr)
-      this._canvas.height = Math.round(this._canvas.clientHeight * this._dpr)
-      this._ctx.scale(this._dpr, this._dpr)
-      this._setStacked(sideBySidePlotWidth(this._canvas.clientWidth) < MIN_PLOT_W)
+      this._syncBuffer()
       this._dirty = true
+      if (this._wantsStacked() !== this._stacked) requestAnimationFrame(this._layoutFrame)
     })
     this._ro.observe(this._canvas)
     this._io = new IntersectionObserver(entries => {
@@ -238,15 +255,19 @@ export class ClimbPerformanceElement extends HTMLElement {
     this._ro?.disconnect()
     this._io?.disconnect()
     window.removeEventListener('mouseup', this._onDragEnd)
-    window.removeEventListener('touchend', this._onDragEnd)
+    window.removeEventListener('touchend', this._onTouchEnd)
+    window.removeEventListener('touchcancel', this._onTouchCancel)
     this.removeEventListener('keydown', this._onKeyDown)
   }
 
   attributeChangedCallback(name: string, _old: string | null, value: string | null) {
-    // The given height is one chart's: stacked, the component is twice as tall (index.css).
+    // A new given height is judged afresh: unstacked, and stacked again in the next
+    // frame if the new height leaves room.
     if (name === 'height') {
-      if (value) this.style.setProperty('--climb-performance-chart-height', value)
-      else this.style.removeProperty('--climb-performance-chart-height')
+      this._heightAttr = value
+      this._setStacked(false)
+      this._applyHeight()
+      if (this.isConnected) requestAnimationFrame(this._layoutFrame)
     }
     if (name === 'vs') this._vsKts = value === null ? 45 : (value ? parseFloat(value) : null)
     if (name === 'cruise-kts') this._cruiseKts = value === null ? 145 : (value ? parseFloat(value) : null)
@@ -263,30 +284,64 @@ export class ClimbPerformanceElement extends HTMLElement {
     this._dirty = true
   }
 
+  // The `height` attribute is one chart's height, set inline as before, so it
+  // still wins over the page's CSS; stacked, it is doubled. A value that isn't a
+  // length is rejected by the browser, leaving the CSS default (540 px, doubled
+  // when stacked).
+  private _applyHeight() {
+    this.style.height = ''
+    if (this._heightAttr) this.style.height = this._stacked ? `calc(2 * (${this._heightAttr}))` : this._heightAttr
+  }
+
+  // Stack the charts when side by side they would be narrower than MIN_PLOT_W, and
+  // the given height, the canvas's before stacking, leaves room for a stacked plot.
+  private _wantsStacked(): boolean {
+    if (sideBySidePlotWidth(this._canvas.clientWidth) >= MIN_PLOT_W) return false
+    return this._stacked || this._canvas.clientHeight - MT - MB >= MIN_STACKED_PLOT_H
+  }
+
+  // Apply the layout, then size the buffer to the height it gives, so the next
+  // frame is drawn at the new size rather than into the old buffer.
+  private _layoutFrame = () => {
+    this._setStacked(this._wantsStacked())
+    this._syncBuffer()
+    this._dirty = true
+  }
+
   private _setStacked(stacked: boolean) {
     if (stacked === this._stacked) return
-    this._stacked = stacked
-    if (stacked) this.style.setProperty('--climb-performance-rows', '2')
-    else this.style.removeProperty('--climb-performance-rows')
-  }
-
-  // A pointer's position in canvas CSS px.
-  private _canvasPoint(point: { clientX: number; clientY: number }): { x: number; y: number } {
-    const rect = this._canvas.getBoundingClientRect()
-    if (!rect.width || !rect.height) return { x: 0, y: 0 }
-    return {
-      x: (point.clientX - rect.left) / rect.width  * this._canvas.clientWidth,
-      y: (point.clientY - rect.top)  / rect.height * this._canvas.clientHeight,
+    try {
+      if (stacked) this._internals.states.add('stacked')
+      else this._internals.states.delete('stacked')
+    } catch {
+      return  // no custom states (Safari before 17.4, Chromium before 125): stay side by side
     }
+    this._stacked = stacked
+    this._applyHeight()
   }
 
-  private _updateCursor({ x: canvasX, y: canvasY }: { x: number; y: number }) {
+  // Size the drawing buffer to the canvas, only when that has changed, since
+  // resizing clears it.
+  private _syncBuffer() {
+    const dpr = window.devicePixelRatio || 1
+    const width = Math.round(this._canvas.clientWidth * dpr), height = Math.round(this._canvas.clientHeight * dpr)
+    if (width === this._canvas.width && height === this._canvas.height && dpr === this._dpr) return
+    this._dpr = dpr
+    this._canvas.width = width; this._canvas.height = height
+    this._ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+  }
+
+  private _canvasX(clientX: number): number {
+    const rect = this._canvas.getBoundingClientRect()
+    if (!rect.width) return 0
+    return (clientX - rect.left) / rect.width * this._canvas.clientWidth
+  }
+
+  private _updateCursor(canvasX: number) {
+    // Stacked, both charts span the same x, so the test picks the thrust chart,
+    // whose mapping is the power chart's too.
     const { thrust, power } = this._areas()
-    // Side by side, the chart is the one the pointer is across from; stacked,
-    // the one it is level with.
-    const area = this._stacked
-      ? (canvasY < power.y - MT ? thrust : power)
-      : (canvasX < thrust.x + thrust.w + (CHART_GAP + MR) / 2 ? thrust : power)
+    const area = canvasX < thrust.x + thrust.w + (CHART_GAP + MR) / 2 ? thrust : power
     let v = (canvasX - area.x) / area.w * VMAX_NORM
     v = Math.max(VS_NORM, Math.min(VMAX_NORM, v))
     // Snap to the nearest key speed in range, so Vmd stays reachable when Vy sits
@@ -301,22 +356,41 @@ export class ClimbPerformanceElement extends HTMLElement {
     this._dirty = true
   }
 
+  // Focus without scrolling: the stacked component can be taller than the screen.
   private _onMouseDown = (event: MouseEvent) => {
-    this._dragging = true; this.focus()
-    this._updateCursor(this._canvasPoint(event))
+    this._dragging = true; this.focus({ preventScroll: true })
+    this._updateCursor(this._canvasX(event.clientX))
   }
   private _onMouseMove = (event: MouseEvent) => {
-    if (this._dragging) this._updateCursor(this._canvasPoint(event))
+    if (this._dragging) this._updateCursor(this._canvasX(event.clientX))
   }
   private _onDragEnd = () => { this._dragging = false }
+  // A touch is a drag once it moves mainly sideways, and is left to scroll the
+  // page once it moves mainly vertically; a touch that doesn't move is a tap.
   private _onTouchStart = (event: TouchEvent) => {
-    event.preventDefault(); this._dragging = true; this.focus()
-    if (event.touches[0]) this._updateCursor(this._canvasPoint(event.touches[0]))
+    const touch = event.touches.length === 1 ? event.touches[0] : null
+    this._touchStartX = touch ? touch.clientX : null
+    this._touchStartY = touch ? touch.clientY : 0
+    this._dragging = false
+    if (touch) this.focus({ preventScroll: true })
   }
   private _onTouchMove = (event: TouchEvent) => {
+    const touch = event.touches[0]
+    if (!touch || this._touchStartX === null) return
+    if (!this._dragging) {
+      const sideways = Math.abs(touch.clientX - this._touchStartX), vertical = Math.abs(touch.clientY - this._touchStartY)
+      if (sideways < 3 && vertical < 3) return
+      if (vertical >= sideways || !event.cancelable) { this._touchStartX = null; return }
+      this._dragging = true
+    }
     event.preventDefault()
-    if (this._dragging && event.touches[0]) this._updateCursor(this._canvasPoint(event.touches[0]))
+    this._updateCursor(this._canvasX(touch.clientX))
   }
+  private _onTouchEnd = () => {
+    if (this._touchStartX !== null && !this._dragging) this._updateCursor(this._canvasX(this._touchStartX))
+    this._onTouchCancel()
+  }
+  private _onTouchCancel = () => { this._touchStartX = null; this._dragging = false }
   private _onKeyDown = (event: KeyboardEvent) => {
     const direction = event.key === 'ArrowLeft' ? -1 : event.key === 'ArrowRight' ? 1 : 0
     if (!direction) return
@@ -335,8 +409,8 @@ export class ClimbPerformanceElement extends HTMLElement {
   // half of the canvas, which is twice the given height then.
   private _areas(): { thrust: ChartArea; power: ChartArea } {
     const W = this._canvas.clientWidth, H = this._canvas.clientHeight
-    if (this._stacked) {
-      const rowH = Math.floor(H / 2)
+    const rowH = Math.floor(H / 2)
+    if (this._stacked && rowH - MT - MB >= MIN_STACKED_PLOT_H) {
       const chartW = W - ML - MR, chartH = rowH - MT - MB
       return {
         thrust: { x: ML, y: MT,        w: chartW, h: chartH },
@@ -395,7 +469,7 @@ export class ClimbPerformanceElement extends HTMLElement {
   private _startRaf() {
     if (this._rafId !== null) return
     const tick = () => {
-      if (this._dirty) { this._draw(); this._dirty = false }
+      if (this._dirty) { this._syncBuffer(); this._draw(); this._dirty = false }
       this._rafId = requestAnimationFrame(tick)
     }
     this._rafId = requestAnimationFrame(tick)

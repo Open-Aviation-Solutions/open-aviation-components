@@ -4,12 +4,13 @@
   border-radius: 8px;
   overflow: hidden;
   background: #f8fafc;
-  /* One chart's height (the `height` attribute sets it), times the number of
-     rows: the element sets the rows to 2 when it stacks the charts at narrow
-     widths, so each chart keeps the given height. */
-  --climb-performance-chart-height: 540px;
-  --climb-performance-rows: 1;
-  height: calc(var(--climb-performance-chart-height) * var(--climb-performance-rows));
+  height: 540px;
+}
+
+/* Stacked at narrow widths (see INSTRUCTIONS.md), each chart keeps the given
+   height. The `height` attribute is set inline, doubled by the element. */
+:host(:state(stacked)) {
+  height: 1080px;
 }
 
 canvas {
@@ -19,6 +20,8 @@ canvas {
   width: 100%;
   height: 100%;
   cursor: ew-resize;
+  /* A vertical swipe scrolls the page; a sideways one moves the cursor. */
+  touch-action: pan-y;
 }
 
 .help-link {
